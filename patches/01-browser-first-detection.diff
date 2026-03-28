@@ -1,0 +1,36 @@
+# Patch 01: Browser-First Meeting Detection
+# Target: watcher.py (in trnscrb package)
+#
+# PROBLEM:
+# trnscrb's default watcher checks for native meeting apps (Zoom.app,
+# Microsoft Teams.app) first. Most users join calls via browser, so
+# native-only detection misses the majority of meetings.
+#
+# CHANGE:
+# In the `detect_meeting()` function (or equivalent meeting detection logic):
+#
+# 1. Add a new function `_browser_has_meeting_tab()` that checks running
+#    browsers (Safari, Chrome, Arc, Firefox) for meeting-related URLs:
+#    - meet.google.com
+#    - zoom.us/j/ or zoom.us/wc/
+#    - teams.microsoft.com
+#    - app.gather.town
+#    - whereby.com
+#
+#    Use AppleScript to query browser tabs:
+#      osascript -e 'tell application "Google Chrome" to get URL of active tab of front window'
+#    Or for Safari:
+#      osascript -e 'tell application "Safari" to get URL of current tab of front window'
+#
+# 2. In `detect_meeting()`, call `_browser_has_meeting_tab()` BEFORE
+#    checking for native apps. Return True if any browser tab matches.
+#
+# 3. The detection order should be:
+#    a) Browser tabs (Meet, Zoom web, Teams web)
+#    b) Native apps (Zoom.app, Teams.app, FaceTime, etc.)
+#    c) System audio level threshold (fallback)
+#
+# WHY:
+# Browser-first detection catches 90%+ of calls. Without this patch,
+# trnscrb only starts recording when it sees a native app, missing
+# browser-based calls entirely.

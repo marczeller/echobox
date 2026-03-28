@@ -1,0 +1,38 @@
+Date: 2026-03-15
+Duration: 2:34
+
+[00:00] SPEAKER_00: Hey, thanks for jumping on this call. I wanted to sync on the Q2 roadmap before the board meeting next week.
+
+[00:08] SPEAKER_01: Of course. I've been reviewing the product metrics and I think we need to discuss the retention numbers.
+
+[00:15] SPEAKER_00: Agreed. We saw a dip in week-over-week retention for the enterprise cohort. Down from 94% to 89% in February.
+
+[00:25] SPEAKER_01: Right. I think the root cause is the onboarding flow. We changed the setup wizard in January and the drop-off increased at step three.
+
+[00:38] SPEAKER_00: Step three is the integration configuration, correct?
+
+[00:41] SPEAKER_01: Yes. The API key entry screen. Users are abandoning there because we're asking for three different credentials before they see any value.
+
+[00:52] SPEAKER_00: What if we defer the third credential to after the first successful sync? Let them see data flowing before we ask for the analytics integration.
+
+[01:05] SPEAKER_01: That's exactly what the product team proposed. They have a prototype ready. We could ship it in the next sprint.
+
+[01:14] SPEAKER_00: Let's do it. Can you get me the expected impact on retention? I want to include it in the board deck.
+
+[01:22] SPEAKER_01: I'll have the analysis by Thursday. Based on the funnel data, we expect a 3-5 point recovery.
+
+[01:30] SPEAKER_00: Perfect. The other thing I wanted to flag — we got an inbound from Acme Corp. They want a dedicated instance.
+
+[01:40] SPEAKER_01: Acme Corp? That's a Fortune 500. What's the deal size?
+
+[01:45] SPEAKER_00: They're talking 200 seats at enterprise pricing. Sarah from sales is leading it. The technical evaluation starts next Monday.
+
+[01:55] SPEAKER_01: That would be our largest deal this quarter. I'll make sure the infrastructure team is ready for the dedicated deployment.
+
+[02:05] SPEAKER_00: Great. Let's regroup on Friday to finalize the board deck. I'll send the agenda.
+
+[02:12] SPEAKER_01: Sounds good. I'll have the retention analysis and the Acme Corp technical requirements ready by then.
+
+[02:20] SPEAKER_00: Thanks. Talk soon.
+
+[02:22] SPEAKER_01: Bye.

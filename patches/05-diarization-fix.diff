@@ -1,0 +1,37 @@
+# Patch 05: Diarization Fix for Apple Silicon
+# Target: transcribe.py (in trnscrb package)
+#
+# PROBLEM:
+# pyannote.audio's speaker diarization pipeline may fail to initialize
+# on Apple Silicon due to MPS (Metal Performance Shaders) backend issues.
+# The pipeline tries to use CUDA by default, falls back to CPU, but
+# doesn't properly handle the MPS device available on Apple Silicon.
+#
+# CHANGE:
+# 1. Find the pyannote pipeline initialization. It looks like:
+#
+#    from pyannote.audio import Pipeline
+#    pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1")
+#
+# 2. Add device detection and assignment after initialization:
+#
+#    import torch
+#    if torch.backends.mps.is_available():
+#        pipeline.to(torch.device("mps"))
+#    elif torch.cuda.is_available():
+#        pipeline.to(torch.device("cuda"))
+#    # else: stays on CPU
+#
+# 3. Wrap the pipeline call in a try/except that falls back to CPU
+#    if MPS fails:
+#
+#    try:
+#        diarization = pipeline(audio_file)
+#    except RuntimeError:
+#        pipeline.to(torch.device("cpu"))
+#        diarization = pipeline(audio_file)
+#
+# WHY:
+# Without this fix, diarization runs on CPU even when MPS is available,
+# making it 5-10x slower. The fallback ensures it still works if MPS
+# has issues with specific audio files.

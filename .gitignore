@@ -1,0 +1,29 @@
+# User config (contains passwords and paths)
+config/echobox.yaml
+
+# Runtime data
+echobox-data/
+
+# Logs
+*.log
+
+# Vercel
+.vercel/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# macOS
+.DS_Store
+
+# Internal planning artifacts
+docs/superpowers/
+
+# Autoresearch
+quality/autoresearch-log.tsv
+quality/composite-score.sh
+
+# Temp
+/tmp/

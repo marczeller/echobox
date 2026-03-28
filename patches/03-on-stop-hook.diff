@@ -1,0 +1,31 @@
+# Patch 03: On-Stop Hook
+# Target: cli.py (in trnscrb package)
+#
+# PROBLEM:
+# trnscrb has no way to trigger external scripts when a recording ends.
+# The Echobox pipeline needs to run automatically after each call.
+#
+# CHANGE:
+# 1. Add a new CLI argument to the argument parser:
+#
+#    parser.add_argument(
+#        "--on-stop",
+#        help="Command to run when recording stops. {transcript_id} is replaced with the ID.",
+#        default=os.environ.get("TRNSCRB_ON_STOP", "")
+#    )
+#
+# 2. After transcription completes (where the transcript file is written),
+#    add hook execution:
+#
+#    if args.on_stop:
+#        import subprocess
+#        transcript_id = Path(transcript_file).stem
+#        cmd = args.on_stop.replace("{transcript_id}", transcript_id)
+#        subprocess.Popen(cmd, shell=True)
+#
+# 3. The hook runs asynchronously (Popen, not run) so it doesn't block
+#    trnscrb from detecting the next call.
+#
+# WHY:
+# This is the integration point between trnscrb and the Echobox pipeline.
+# Without it, you'd need to manually trigger enrichment after every call.

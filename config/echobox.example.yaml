@@ -1,0 +1,188 @@
+# =============================================================================
+# Echobox Configuration
+# =============================================================================
+# Copy this file to echobox.yaml and edit to match your setup.
+# All paths support ~ expansion and environment variables.
+
+# --- Whisper transcription ---
+whisper_model: large-v3
+# Options: tiny, base, small, medium, large-v3
+# large-v3 recommended for accuracy (~3 GB memory)
+
+# --- LLM enrichment model ---
+mlx_model: mlx-community/Qwen3-Next-80B-A3B-Instruct-6bit
+mlx_url: http://localhost:8090/v1/chat/completions
+# Start the MLX server before enrichment:
+#   mlx_lm.server --model <model_name> --port 8090
+
+# --- Enrichment prompt (optional) ---
+# Leave unset to use the built-in prompt.
+# To customize the report structure, copy templates/enrichment_prompt.txt
+# and edit the wording or section names.
+prompt:
+  # Supported placeholders:
+  #   {{transcript}}
+  #   {{known_attendees}}
+  #   {{meeting_type}}
+  #   {{curated_context}}
+  template: ""
+
+# --- Two-machine setup (optional) ---
+# Leave blank for single-machine mode.
+# For two machines: laptop records, workstation enriches.
+workstation_ssh: ""
+# Example: "user@192.168.1.100" or "user@workstation.local"
+# Use environment variable: ECHOBOX_WORKSTATION overrides this.
+
+# --- Data directories ---
+transcript_dir: ~/echobox-data/transcripts
+enrichment_dir: ~/echobox-data/enrichments
+report_dir: ~/echobox-data/reports
+log_dir: ~/echobox-data/logs
+
+# =============================================================================
+# Context Sources
+# =============================================================================
+# Echobox curates context for the LLM based on meeting type.
+# Each source is pluggable — configure the ones that match your toolchain.
+
+context_sources:
+  # Calendar events (primary signal for meeting classification)
+  calendar:
+    enabled: true
+    # Command that returns JSON with an "items" array of calendar events.
+    # The {date} placeholder is replaced with YYYY-MM-DD.
+    command: "your-calendar-cli events list --date {date} --format json"
+    # Example with Google Calendar CLI:
+    # command: "gcalcli agenda {date} {date} --details all --output json"
+
+  # Message database (Telegram, Slack export, etc.)
+  messages:
+    enabled: false
+    type: sqlite   # "sqlite" for direct DB access, "command" for shell command
+    # command: ""  # Shell command for type: command (use {term} placeholder)
+    # Path to your message database
+    path: ""
+    # SQL query template. {term} is replaced with search term.
+    query: >
+      SELECT sender_name, datetime(timestamp, 'unixepoch') as ts,
+             substr(text, 1, 200) as snippet
+      FROM messages
+      WHERE text LIKE '%{term}%'
+      AND timestamp > unixepoch('now', '-90 days')
+      ORDER BY timestamp DESC
+      LIMIT 15
+
+  # Document search (semantic search, file search, etc.)
+  documents:
+    enabled: false
+    # Command that searches your documents. {term} is the search query.
+    command: ""
+    # Example with a search tool:
+    # command: "my-search-tool query '{term}' --limit 5"
+
+  # Web search (fallback for unknown attendees/topics)
+  web:
+    enabled: true
+    # Uses DuckDuckGo Instant Answers API by default.
+    # Override with your preferred search command:
+    # command: "my-web-search '{query}'"
+
+# =============================================================================
+# Internal Team
+# =============================================================================
+# Map email addresses to names for speaker identification.
+# Emails from internal domains are used to detect internal-only meetings.
+
+team:
+  members:
+    # "email@domain.com": "Full Name"
+    # Add your team members here:
+    # "alice@yourcompany.com": "Alice Smith"
+    # "bob@yourcompany.com": "Bob Jones"
+
+  internal_domains:
+    # - yourcompany.com
+    # - partner-org.com
+
+  roles:
+    # "Full Name": "Role description"
+    # "Alice Smith": "Engineering Lead"
+    # "Bob Jones": "Product Manager"
+
+# =============================================================================
+# Meeting Classification
+# =============================================================================
+# Define meeting types with patterns (matched against calendar event title)
+# and which context sources to query for each type.
+
+meeting_types:
+  client_call:
+    patterns: ["client", "partner", "investor", "prospect"]
+    context: [calendar, messages, documents, web]
+    # Curates all available context for external calls
+
+  team_sync:
+    patterns: ["sync", "standup", "weekly", "retro"]
+    internal_only: true
+    context: [documents]
+    # Only project documents for internal meetings
+
+  one_on_one:
+    patterns: ["1:1", "one on one", "check-in"]
+    context: [calendar, documents]
+
+  general:
+    patterns: []
+    context: [calendar, web]
+    # Fallback for unclassified meetings
+
+# =============================================================================
+# Report Publishing
+# =============================================================================
+
+publish:
+  # Report generation engine:
+  #   "local"  — uses built-in HTML template (default, fully local, no network)
+  #   "claude" — uses Claude CLI for designed reports (sends content to Anthropic API)
+  engine: local
+
+  # "vercel" for password-gated Vercel deployment
+  # "local" for local HTML files only
+  platform: local
+
+  # Password for the Vercel auth gate
+  password: "change-me"
+
+  # Vercel team scope (required for Vercel deployment)
+  scope: ""
+
+  # Custom report template (optional — uses built-in template by default)
+  # template: ~/echobox/templates/report.html
+
+# =============================================================================
+# Notifications
+# =============================================================================
+
+notify:
+  enabled: false
+  # Shell command to send notification after each report.
+  # Environment variables available:
+  #   $ECHOBOX_REPORT_URL     — link to the report (file:// or https://)
+  #   $ECHOBOX_REPORT_TITLE   — meeting summary (first 200 chars of enrichment)
+  #   $ECHOBOX_REPORT_SUMMARY — same as title, for longer notifications
+  command: ""
+  #
+  # Quick setup — pick one and uncomment:
+  #
+  # macOS native popup (simplest):
+  #   command: "osascript -e \"display notification \\\"$ECHOBOX_REPORT_TITLE\\\" with title \\\"Echobox\\\" sound name \\\"Funk\\\"\""
+  #
+  # Slack webhook:
+  #   command: "curl -sf -X POST -H 'Content-type: application/json' --data \"{\\\"text\\\":\\\"$ECHOBOX_REPORT_TITLE\\\\n$ECHOBOX_REPORT_URL\\\"}\" YOUR_WEBHOOK_URL"
+  #
+  # Telegram bot:
+  #   command: "curl -sf 'https://api.telegram.org/botTOKEN/sendMessage?chat_id=CHATID' --data-urlencode \"text=$ECHOBOX_REPORT_TITLE $ECHOBOX_REPORT_URL\""
+  #
+  # Log to file:
+  #   command: "echo \"$(date -Iseconds) $ECHOBOX_REPORT_TITLE $ECHOBOX_REPORT_URL\" >> ~/echobox-notifications.log"

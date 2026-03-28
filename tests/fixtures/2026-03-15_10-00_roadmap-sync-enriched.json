@@ -1,0 +1,54 @@
+{
+  "date": "2026-03-15",
+  "time": "10:00",
+  "duration": "2:34",
+  "meeting_type": "general",
+  "participants": [
+    {
+      "name": "Alex Chen",
+      "email": "alex@example.com"
+    },
+    {
+      "name": "Priya Raman",
+      "email": "priya@example.com"
+    }
+  ],
+  "summary": "Alex Chen and Priya Raman reviewed Q2 roadmap priorities ahead of the board meeting and focused on the recent retention drop in the enterprise cohort. They agreed the main problem is friction in the onboarding flow, especially the API credential step, and aligned on a plan to simplify activation before the next review.",
+  "speakers": [
+    {
+      "label": "SPEAKER_00",
+      "name": "Alex Chen",
+      "confidence": "high"
+    },
+    {
+      "label": "SPEAKER_01",
+      "name": "Priya Raman",
+      "confidence": "high"
+    }
+  ],
+  "decisions": [
+    "Prioritize onboarding fixes over new dashboard polish for the next sprint.",
+    "Reduce the integration setup flow so users can reach first value before entering every credential.",
+    "Bring updated retention analysis and an onboarding prototype to the board prep review next week."
+  ],
+  "action_items": [
+    {
+      "owner": "Priya Raman",
+      "task": "Pull step-level drop-off metrics for the onboarding wizard and share a short analysis",
+      "deadline": "Tuesday"
+    },
+    {
+      "owner": "Alex Chen",
+      "task": "Draft a revised onboarding flow that delays the API key wall until after first value",
+      "deadline": "Wednesday"
+    },
+    {
+      "owner": "Alex Chen",
+      "task": "Update the board prep deck with the retention narrative and mitigation plan",
+      "deadline": "before next week's board meeting"
+    }
+  ],
+  "follow_ups": [
+    "The team still needs to confirm whether the retention dip is fully explained by onboarding friction or if account provisioning latency also contributed. Priya will validate that with funnel data and support tickets before the next meeting."
+  ]
+}

@@ -1,0 +1,38 @@
+You are analyzing a meeting transcript for a project team.
+
+{{known_attendees}}
+
+<meeting_type>{{meeting_type}}</meeting_type>
+
+{{curated_context}}
+
+Now analyze this transcript. Use the known_attendees and meeting_type to correctly identify speakers.
+
+<transcript>
+{{transcript}}
+</transcript>
+
+Produce a structured analysis with these exact sections:
+
+## Meeting Summary
+2-3 sentence executive summary. Name the participants and the purpose of the call.
+
+## Speaker Identification
+Map each SPEAKER_XX to a real name. Use the known_attendees list and what each person discusses.
+
+| Speaker Label | Identified As | Confidence |
+|---|---|---|
+| SPEAKER_00 | Name | high/medium/low |
+
+## Key Decisions
+Bullet list of anything decided or committed to. Only include actual decisions, not discussion.
+
+## Action Items
+Each action item must have an owner and a deadline (if mentioned). Format:
+- **[Owner]** Action item description *(by [date] if mentioned)*
+
+## Follow-ups Needed
+What was discussed but not resolved? Who needs to follow up and on what?
+
+## Context for Next Meeting
+One paragraph: what should the participants prepare or know before the next conversation?

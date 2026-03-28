@@ -1,0 +1,43 @@
+# Patch 06: BlackHole as Default Audio Device
+# Target: audio.py (in trnscrb package)
+#
+# PROBLEM:
+# trnscrb defaults to the system microphone for recording. To capture
+# system audio (what both sides of a call say), you need a virtual
+# audio device like BlackHole. Without this patch, users must manually
+# specify the audio device every time.
+#
+# CHANGE:
+# 1. Find where the audio input device is selected. It may look like:
+#
+#    device = sd.default.device[0]  # default input
+#    or
+#    device = args.device or get_default_input()
+#
+# 2. Add BlackHole detection before the default fallback:
+#
+#    import sounddevice as sd
+#
+#    def get_preferred_input():
+#        """Prefer BlackHole for system audio capture."""
+#        devices = sd.query_devices()
+#        for i, d in enumerate(devices):
+#            if "BlackHole" in d["name"] and d["max_input_channels"] > 0:
+#                return i
+#        return sd.default.device[0]
+#
+# 3. Use `get_preferred_input()` as the default device.
+#
+# 4. Add a CLI flag to override:
+#    --audio-device  (name or index of audio input device)
+#
+# PREREQUISITES:
+# BlackHole must be installed: brew install blackhole-2ch
+# A Multi-Output Device must be configured in Audio MIDI Setup that
+# includes both your speakers/headphones AND BlackHole. This lets you
+# hear the call while BlackHole captures it.
+#
+# WHY:
+# System audio capture is essential for recording both sides of a call.
+# Without BlackHole as default, trnscrb only records your microphone,
+# missing what the other participants say.

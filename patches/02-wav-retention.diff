@@ -1,0 +1,28 @@
+# Patch 02: WAV File Retention
+# Target: cli.py (in trnscrb package)
+#
+# PROBLEM:
+# trnscrb deletes WAV audio files immediately after transcription.
+# This prevents re-running diarization with improved models, and
+# makes it impossible to recover if transcription quality was poor.
+#
+# CHANGE:
+# 1. Find the line where the WAV file is deleted after transcription.
+#    It will look something like:
+#      os.unlink(wav_path)
+#    or:
+#      Path(wav_path).unlink()
+#
+# 2. Replace the unconditional delete with a config check:
+#
+#    keep_wav = os.environ.get("TRNSCRB_KEEP_WAV", "1") == "1"
+#    if not keep_wav:
+#        Path(wav_path).unlink(missing_ok=True)
+#
+# 3. Default to KEEPING the WAV (TRNSCRB_KEEP_WAV=1).
+#    Users who want auto-deletion can set TRNSCRB_KEEP_WAV=0.
+#
+# WHY:
+# Diarization models improve over time. Keeping the source audio lets
+# you re-process old recordings with better speaker identification.
+# Disk space is cheap; re-recording a call is impossible.

@@ -1,0 +1,141 @@
+# =============================================================================
+# Context Source Configuration Examples
+# =============================================================================
+# This file shows ALTERNATIVE commands for each context source type.
+# Echobox supports ONE command per source type (calendar, messages, documents, web).
+# Pick the command that matches your toolchain and paste it into your
+# echobox.yaml under the corresponding context_sources section.
+#
+# These are NOT active configs — they are reference examples only.
+
+# =============================================================================
+# Calendar Sources
+# =============================================================================
+# The calendar source is the primary signal for meeting classification.
+# It must return JSON with an "items" array of event objects.
+
+# --- Google Calendar via gcalcli ---
+calendar_gcalcli:
+  enabled: true
+  command: "gcalcli agenda {date} {date} --details all --output json"
+
+# --- Google Calendar via gws CLI ---
+calendar_gws:
+  enabled: true
+  command: >
+    gws calendar events list
+    --params '{"calendarId":"primary","timeMin":"{date}T00:00:00Z","timeMax":"{date}T23:59:59Z","singleEvents":true,"orderBy":"startTime"}'
+
+# --- Microsoft Outlook via CLI ---
+calendar_outlook:
+  enabled: true
+  command: "mgc calendar events list --start-date-time {date}T00:00:00 --end-date-time {date}T23:59:59 --output json"
+
+# --- CalDAV / Apple Calendar via icalBuddy ---
+calendar_ical:
+  enabled: true
+  command: "icalBuddy -f -b '' eventsFrom:{date} to:{date}"
+  # Note: icalBuddy output is not JSON — you may need a wrapper script
+  # that converts to {"items": [...]} format.
+
+# --- Static/mock (for testing) ---
+calendar_mock:
+  enabled: true
+  command: "cat ~/echobox/tests/fixtures/calendar-events.json"
+
+# =============================================================================
+# Message Sources
+# =============================================================================
+# Search message databases for context about attendees and topics.
+
+# --- SQLite database (Telegram export, Slack export, etc.) ---
+messages_sqlite:
+  enabled: true
+  type: sqlite
+  path: "/path/to/messages.db"
+  query: >
+    SELECT chat_name, sender_name,
+           datetime(timestamp, 'unixepoch') as ts,
+           substr(text, 1, 200) as snippet
+    FROM messages
+    WHERE text LIKE '%{term}%'
+    AND timestamp > unixepoch('now', '-90 days')
+    ORDER BY timestamp DESC
+    LIMIT 15
+
+# --- Slack search via API ---
+messages_slack:
+  enabled: true
+  type: command
+  command: >
+    curl -s -H "Authorization: Bearer $SLACK_TOKEN"
+    "https://slack.com/api/search.messages?query={term}&count=10"
+    | python3 -c "import sys,json; [print(m['text'][:200]) for m in json.load(sys.stdin).get('messages',{}).get('matches',[])]"
+
+# --- Plain text / grep ---
+messages_grep:
+  enabled: true
+  type: command
+  command: "grep -rli '{term}' ~/chat-logs/ | head -5 | xargs head -20"
+
+# =============================================================================
+# Document Sources
+# =============================================================================
+# Search project documents, notes, and knowledge bases.
+
+# --- File-based grep search ---
+documents_grep:
+  enabled: true
+  command: "grep -rn '{term}' $PROJECT_DIR/docs/ --include='*.md' -l | head -10 | xargs head -50"
+
+# --- Semantic search (if you have an indexing tool) ---
+documents_semantic:
+  enabled: true
+  command: "your-search-tool query '{term}' --collection project-docs --limit 5"
+
+# --- Notion search via API ---
+documents_notion:
+  enabled: true
+  command: >
+    curl -s -X POST "https://api.notion.com/v1/search"
+    -H "Authorization: Bearer $NOTION_TOKEN"
+    -H "Notion-Version: 2022-06-28"
+    -H "Content-Type: application/json"
+    -d '{"query": "{term}", "page_size": 5}'
+    | python3 -c "import sys,json; [print(r['properties'].get('title',{}).get('title',[{}])[0].get('plain_text','')) for r in json.load(sys.stdin).get('results',[])]"
+
+# --- Previous meeting notes ---
+documents_meeting_history:
+  enabled: true
+  command: "ls -t $PROJECT_DIR/meeting-notes/*{term}* 2>/dev/null | head -3 | xargs head -80"
+
+# =============================================================================
+# Web Sources
+# =============================================================================
+# Web search fallback for unknown attendees or topics.
+
+# --- DuckDuckGo Instant Answers (default, no API key needed) ---
+web_duckduckgo:
+  enabled: true
+  command: >
+    curl -sf 'https://api.duckduckgo.com/?q={query}&format=json&no_html=1'
+    | python3 -c "import sys,json; d=json.load(sys.stdin);
+    print(d.get('Abstract','')[:500] or
+    next((t.get('Text','') for t in d.get('RelatedTopics',[]) if t.get('Text')), ''))"
+
+# --- SerpAPI (requires API key) ---
+web_serpapi:
+  enabled: true
+  command: >
+    curl -sf "https://serpapi.com/search.json?q={query}&api_key=$SERPAPI_KEY"
+    | python3 -c "import sys,json; d=json.load(sys.stdin);
+    [print(r.get('snippet','')) for r in d.get('organic_results',[])[:3]]"
+
+# --- Brave Search API ---
+web_brave:
+  enabled: true
+  command: >
+    curl -sf "https://api.search.brave.com/res/v1/web/search?q={query}"
+    -H "Accept: application/json"
+    -H "X-Subscription-Token: $BRAVE_API_KEY"
+    | python3 -c "import sys,json; [print(r['description'][:200]) for r in json.load(sys.stdin).get('web',{}).get('results',[])[:3]]"

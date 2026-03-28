@@ -1,0 +1,25 @@
+{
+  "items": [
+    {
+      "summary": "Q2 Roadmap Sync",
+      "start": {
+        "dateTime": "2026-03-15T10:00:00-04:00"
+      },
+      "end": {
+        "dateTime": "2026-03-15T10:30:00-04:00"
+      },
+      "attendees": [
+        {
+          "email": "alex@example.com",
+          "displayName": "Alex Chen",
+          "responseStatus": "accepted"
+        },
+        {
+          "email": "jordan@example.com",
+          "displayName": "Jordan Rivera",
+          "responseStatus": "accepted"
+        }
+      ]
+    }
+  ]
+}
