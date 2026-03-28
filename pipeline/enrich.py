@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """MLX call enrichment with smart context curation.
 
 Matches transcripts to calendar events, classifies meeting type,

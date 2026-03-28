@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """Hardware-aware model selection for Echobox.
 
 Benchmarks Whisper models for transcription speed and uses LLMFit
@@ -6,7 +7,6 @@ to recommend MLX models for enrichment, based on your hardware.
 
 Usage: python3 fit.py [--auto] [--whisper-only] [--mlx-only] [--dry-run]
 """
-from __future__ import annotations
 import argparse
 import json
 import os

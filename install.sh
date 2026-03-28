@@ -148,6 +148,11 @@ fi
 
 step "Checking Python packages"
 
+if [ -z "$PYTHON_CMD" ]; then
+    warn "Skipped — install Python 3.12+ first: brew install python@3.12"
+    ERRORS=$((ERRORS + 1))
+else
+
 HAS_FASTER_WHISPER=false
 if $PYTHON_CMD -c "import faster_whisper" 2>/dev/null; then
     ok "faster-whisper installed"
@@ -171,6 +176,8 @@ else
     offer_python_package_install \
         "pyannote.audio" \
         "Requires accepting the pyannote model license and setting HF_TOKEN: https://huggingface.co/pyannote/speaker-diarization-3.1"
+fi
+
 fi
 
 step "Checking BlackHole audio driver"
