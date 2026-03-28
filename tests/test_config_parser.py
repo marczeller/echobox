@@ -36,7 +36,7 @@ def main():
         handle.write(
             """
 {
-  "whisper_model": "large-v3",
+  "whisper_model": "mlx-community/whisper-large-v3-mlx",
   "mlx_model": "demo-model",
   "mlx_url": "http://localhost:8090/v1/chat/completions",
   "workstation_ssh": "",

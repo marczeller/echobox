@@ -6,7 +6,7 @@ Echobox records calls, transcribes them locally, diarizes speakers, enriches the
 
 ## 30-Second Mental Model
 
-- `./install.sh` checks dependencies, creates `config/echobox.yaml`, creates `~/echobox-data/*`, and writes an optional launchd service file.
+- `./install.sh` checks dependencies, creates `config/echobox.yaml`, runs model fit unless you keep existing model settings, creates `~/echobox-data/*`, and writes an optional launchd service file.
 - `./echobox status` is the fastest way to see what is missing.
 - `./echobox fit` writes recommended `whisper_model` and `mlx_model` values into `config/echobox.yaml`.
 - `./echobox demo` exercises the enrichment flow without requiring a running LLM server.
@@ -21,8 +21,8 @@ If a user says "set up Echobox on my machine", follow this order:
 
 1. Run `./install.sh`.
 2. Run `./echobox status`.
-3. Edit `config/echobox.yaml` directly.
-4. Run `./echobox fit`.
+3. Edit `config/echobox.yaml` directly if needed.
+4. Re-run `./echobox fit` only if you want to change or re-benchmark model choices.
 5. Start the local LLM server that matches `mlx_url`.
 6. Run `./echobox demo`.
 7. Manually apply the `trnscrb` patch instructions in `patches/README.md`, then run `./echobox watch`.
@@ -40,12 +40,13 @@ For alpha users, treat intelligent setup as an agent-assisted playbook, not as s
 Recommended sequence:
 
 1. Run `./install.sh` and `./echobox status` first.
-2. Ask for consent before probing private sources like Calendar, Messages, Slack exports, or local notes.
-3. Run `./echobox smart-setup` to probe the machine and draft context-source recommendations.
-4. Interview the user about actual meeting types: investor, board, client, team sync, recruiting, support, and 1:1s.
-5. If the user consents and a calendar CLI is available, run `./echobox smart-setup --with-calendar` to inspect recent event titles and attendee domains.
-6. Edit `config/echobox.yaml` directly. Do not let the probe script silently rewrite it.
-7. Review the suggested `context_sources.*`, `team.*`, and `meeting_types.*` values with the user before enabling them.
+2. Treat the model-fit step inside `./install.sh` as part of the default setup flow; only re-run it manually if you want different recommendations.
+3. Ask for consent before probing private sources like Calendar, Messages, Slack exports, or local notes.
+4. Run `./echobox smart-setup` to probe the machine and draft context-source recommendations.
+5. Interview the user about actual meeting types: investor, board, client, team sync, recruiting, support, and 1:1s.
+6. If the user consents and a calendar CLI is available, run `./echobox smart-setup --with-calendar` to inspect recent event titles and attendee domains.
+7. Edit `config/echobox.yaml` directly. Do not let the probe script silently rewrite it.
+8. Review the suggested `context_sources.*`, `team.*`, and `meeting_types.*` values with the user before enabling them.
 
 What to probe on macOS:
 
@@ -97,7 +98,7 @@ The main config file is `config/echobox.yaml`. `./install.sh` creates it from `c
 
 Key settings:
 
-- `whisper_model`: transcription model.
+- `whisper_model`: transcription model (`mlx-whisper` Hugging Face repo path).
 - `mlx_model`: enrichment model name to use with the configured server.
 - `mlx_url`: OpenAI-compatible chat completions endpoint.
 - `workstation_ssh`: optional two-machine enrichment target.

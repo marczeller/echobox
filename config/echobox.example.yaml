@@ -5,9 +5,10 @@
 # All paths support ~ expansion and environment variables.
 
 # --- Whisper transcription ---
-whisper_model: large-v3
-# Options: tiny, base, small, medium, large-v3
-# large-v3 recommended for accuracy (~3 GB memory)
+whisper_model: mlx-community/whisper-large-v3-mlx
+# Uses mlx-whisper with MLX/Metal acceleration on Apple Silicon.
+# Options: mlx-community/whisper-{tiny,base,small,medium}-mlx, mlx-community/whisper-large-v3-mlx
+# whisper-large-v3-mlx recommended for accuracy (~3 GB memory)
 
 # --- LLM enrichment model ---
 mlx_model: mlx-community/Qwen3-Next-80B-A3B-Instruct-6bit

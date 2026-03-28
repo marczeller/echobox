@@ -10,7 +10,6 @@ The real first-run sequence is:
 ./install.sh
 ./echobox status
 ./echobox smart-setup
-./echobox fit
 ./echobox demo
 ```
 
@@ -32,7 +31,13 @@ cd ~/echobox
 ./install.sh
 ```
 
-`./install.sh` checks for `ffmpeg`, `trnscrb`, Python 3.12+, `faster-whisper`, `pyannote.audio`, BlackHole, and `HF_TOKEN`. It also creates `config/echobox.yaml`, `~/echobox-data/*`, and an optional launchd service file.
+`./install.sh` checks for `ffmpeg`, `trnscrb`, Python 3.12+, `mlx-whisper`, `pyannote.audio`, BlackHole, and `HF_TOKEN`. It also creates `config/echobox.yaml`, runs the model fit flow unless your config already has model settings you keep, creates `~/echobox-data/*`, and writes an optional launchd service file.
+
+If you are installing Python packages manually instead of using the installer, use:
+
+```bash
+python3.12 -m pip install --user mlx-whisper pyannote.audio pyyaml
+```
 
 ### Step 2: Configure BlackHole Audio
 
@@ -90,15 +95,9 @@ At minimum, review:
 - `context_sources.calendar.command`
 - `publish.engine` and `publish.platform`
 
-### Step 7: Find the Best Models for Your Hardware
+`./install.sh` now runs the hardware fit flow during setup on fresh installs, and on re-installs it only re-runs fit if you choose to or if a model setting is missing. Run `./echobox fit` manually any time you want to re-benchmark or change recommendations.
 
-```bash
-./echobox fit
-```
-
-This writes recommended `whisper_model` and `mlx_model` values into `config/echobox.yaml`.
-
-### Step 8: Start the LLM Server
+### Step 7: Start the LLM Server
 
 **macOS (MLX):**
 
@@ -107,18 +106,18 @@ python3.12 -m pip install --user mlx-lm
 mlx_lm.server --model <configured-mlx_model> --port 8090
 ```
 
-### Step 9: Apply `trnscrb` Patch Instructions
+### Step 8: Apply `trnscrb` Patch Instructions
 
 Read [patches/README.md](../patches/README.md) and manually apply the six documented `trnscrb` changes. These files are instruction files, not guaranteed applicable unified diffs.
 
-### Step 10: Smoke-Test the Pipeline
+### Step 9: Smoke-Test the Pipeline
 
 ```bash
 ./echobox demo
 ./echobox quality
 ```
 
-### Step 11: Start Recording
+### Step 10: Start Recording
 
 ```bash
 ./echobox watch

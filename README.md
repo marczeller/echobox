@@ -13,7 +13,7 @@ Core processing stays on your machine: transcription, diarization, and enrichmen
 1. **Call detected** — trnscrb watches your browser tabs for Meet/Zoom/Teams URLs
 2. **Audio captured** — BlackHole records system audio (both sides of the call) to WAV
 3. **Call ends** — trnscrb fires the on-stop hook, triggering the pipeline
-4. **Transcribed** — faster-whisper transcribes the WAV locally on Apple Silicon
+4. **Transcribed** — mlx-whisper transcribes the WAV locally with MLX/Metal on Apple Silicon
 5. **Speakers labeled** — pyannote.audio diarizes speakers (SPEAKER_00, SPEAKER_01...)
 6. **Calendar matched** — the transcript timestamp is matched to your calendar event, pulling attendee names
 7. **Context curated** — based on meeting type, relevant docs/messages/web context is gathered
@@ -59,7 +59,7 @@ git clone https://github.com/marczeller/echobox.git && cd echobox
 ./install.sh
 ```
 
-1. Install dependencies and configure with `./install.sh`
+1. Install dependencies and configure with `./install.sh`; on fresh installs this now runs hardware fit to choose local models
 2. Optionally run `./echobox smart-setup` to probe the machine and draft context-source recommendations
 3. Apply the manual `trnscrb` patch instructions in [patches/README.md](patches/README.md)
 4. Start your MLX model server
@@ -74,7 +74,7 @@ See a [sample report](docs/sample-report.html) generated from the demo fixtures.
 |-------|-------------|
 | **1. Detection** | A watcher detects that a call has started or ended |
 | **2. Recording** | System audio is captured to a WAV file |
-| **3. Transcription** | faster-whisper transcribes the call locally |
+| **3. Transcription** | mlx-whisper transcribes the call locally with MLX/Metal |
 | **4. Diarization** | pyannote.audio segments speakers |
 | **5. Enrichment** | A local LLM receives the transcript plus project context |
 | **6. Publishing** | A styled HTML report is generated locally or deployed |

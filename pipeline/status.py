@@ -154,12 +154,12 @@ def main() -> int:
         ready = False
         issues.append("  - Install PyYAML: python3 -m pip install --user pyyaml")
 
-    if module_importable("faster_whisper"):
-        print("  faster-whisper: importable")
+    if module_importable("mlx_whisper"):
+        print("  mlx-whisper:    importable")
     else:
-        print("  faster-whisper: NOT FOUND")
+        print("  mlx-whisper:    NOT FOUND")
         ready = False
-        issues.append("  - Install faster-whisper: python3 -m pip install --user faster-whisper")
+        issues.append("  - Install mlx-whisper: python3 -m pip install --user mlx-whisper")
 
     if module_importable("pyannote.audio"):
         print("  pyannote:       importable")

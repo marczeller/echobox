@@ -54,16 +54,16 @@ Check that the manual `trnscrb` instructions corresponding to `02-wav-retention.
 
 ### Whisper model download fails
 
-If `./install.sh` cannot pre-download `large-v3`, retry manually:
+`mlx-whisper` downloads models on first use. If the `mlx-community/whisper-large-v3-mlx` cache does not appear after `./echobox fit` or your first transcription, retry manually:
 
 ```bash
-python3.12 -c "from faster_whisper import WhisperModel; WhisperModel('large-v3', device='cpu', compute_type='int8')"
+python3.12 -c "import mlx_whisper; mlx_whisper.transcribe('/tmp/echobox-fit-sample.wav', path_or_hf_repo='mlx-community/whisper-large-v3-mlx')"
 ```
 
 Or temporarily choose a smaller model in `config/echobox.yaml`:
 
 ```yaml
-whisper_model: medium
+whisper_model: mlx-community/whisper-medium-mlx
 ```
 
 ### Poor transcription quality

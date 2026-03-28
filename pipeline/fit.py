@@ -212,7 +212,13 @@ FALLBACK_MODELS = {
     96: "mlx-community/Qwen3-Next-80B-A3B-Instruct-6bit",
 }
 
-WHISPER_MODELS = ["tiny", "base", "small", "medium", "large-v3"]
+WHISPER_MODELS = [
+    "mlx-community/whisper-tiny-mlx",
+    "mlx-community/whisper-base-mlx",
+    "mlx-community/whisper-small-mlx",
+    "mlx-community/whisper-medium-mlx",
+    "mlx-community/whisper-large-v3-mlx",
+]
 SAMPLE_DURATION = 30.0
 
 
@@ -605,7 +611,7 @@ def generate_sample_wav() -> str | None:
 
 def benchmark_whisper_model(model_size: str, sample_path: str) -> dict | None:
     try:
-        from faster_whisper import WhisperModel
+        import mlx_whisper
     except ImportError:
         return None
 
@@ -613,28 +619,18 @@ def benchmark_whisper_model(model_size: str, sample_path: str) -> dict | None:
 
     t0 = time.time()
     try:
-        model = WhisperModel(model_size, device="auto", compute_type="auto")
-    except Exception as e:
-        result["error"] = str(e)
-        return result
-    result["load_time"] = time.time() - t0
-
-    t0 = time.time()
-    try:
-        segments, info = model.transcribe(sample_path, beam_size=1)
-        for _ in segments:
-            pass
+        transcript = mlx_whisper.transcribe(sample_path, path_or_hf_repo=model_size)
     except Exception as e:
         result["error"] = str(e)
         return result
     result["transcribe_time"] = time.time() - t0
     result["rtf"] = result["transcribe_time"] / SAMPLE_DURATION
+    result["segments"] = len(transcript.get("segments", [])) if isinstance(transcript, dict) else 0
 
     # macOS ru_maxrss is in bytes
     usage = resource.getrusage(resource.RUSAGE_SELF)
     result["peak_memory_mb"] = usage.ru_maxrss / (1024 * 1024)
 
-    del model
     return result
 
 
@@ -647,9 +643,9 @@ def run_whisper_fit(args) -> str | None:
         return None
 
     try:
-        import faster_whisper  # noqa: F401
+        import mlx_whisper  # noqa: F401
     except ImportError:
-        fail("faster-whisper not found — install: pip install faster-whisper")
+        fail("mlx-whisper not found — install: pip install mlx-whisper")
         return None
 
     sample_path = generate_sample_wav()
@@ -677,10 +673,10 @@ def run_whisper_fit(args) -> str | None:
         return None
 
     print()
-    print(f"  {'Model':<12} {'Load':>6} {'Transcribe':>11} {'RTF':>6} {'Memory':>8}")
+    print(f"  {'Model':<40} {'Transcribe':>11} {'RTF':>6} {'Memory':>8}")
     for r in results:
         mem_str = f"~{r['peak_memory_mb']:.0f} MB"
-        print(f"  {r['model']:<12} {r['load_time']:>5.1f}s {r['transcribe_time']:>10.1f}s {r['rtf']:>6.2f} {mem_str:>8}")
+        print(f"  {r['model']:<40} {r['transcribe_time']:>10.1f}s {r['rtf']:>6.2f} {mem_str:>8}")
 
     recommended = None
     for r in reversed(results):

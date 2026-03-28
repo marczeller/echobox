@@ -44,7 +44,8 @@ def main() -> int:
     print("Minimum setup — answer these to get running:")
     print("")
 
-    whisper_model = input("  Whisper model [large-v3]: ").strip() or "large-v3"
+    whisper_default = "mlx-community/whisper-large-v3-mlx"
+    whisper_model = input(f"  Whisper model [{whisper_default}]: ").strip() or whisper_default
     mlx_url = "http://localhost:8090/v1/chat/completions"
 
     print("")

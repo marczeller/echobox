@@ -67,7 +67,9 @@ def main():
         (modules_dir / "yaml.py").write_text(
             "import json\n\ndef safe_load(stream):\n    return json.loads(stream.read())\n"
         )
-        (modules_dir / "faster_whisper.py").write_text("class WhisperModel: pass\n")
+        (modules_dir / "mlx_whisper.py").write_text(
+            "def transcribe(*args, **kwargs):\n    return {'segments': [], 'text': ''}\n"
+        )
         (modules_dir / "pyannote").mkdir()
         (modules_dir / "pyannote" / "__init__.py").write_text("")
         (modules_dir / "pyannote" / "audio.py").write_text("class Pipeline: pass\n")

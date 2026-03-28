@@ -14,7 +14,7 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 STEP_NUM=0
-TOTAL_STEPS=10
+TOTAL_STEPS=11
 
 ok()   { echo -e "  ${GREEN}[ok]${NC} $1"; }
 warn() { echo -e "  ${YELLOW}[!!]${NC} $1"; }
@@ -29,6 +29,13 @@ confirm() {
     local answer
     read -rp "$prompt [Y/n]: " answer
     [[ -z "$answer" || "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]
+}
+
+confirm_default_no() {
+    local prompt="$1"
+    local answer
+    read -rp "$prompt [y/N]: " answer
+    [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]
 }
 
 python_pip_install_cmd() {
@@ -80,6 +87,9 @@ echo "  ╚═══════════════════════
 echo ""
 
 ERRORS=0
+CONFIG_CREATED=false
+FIT_RAN=false
+FIT_SKIPPED=false
 
 step "Checking system requirements"
 
@@ -153,14 +163,14 @@ if [ -z "$PYTHON_CMD" ]; then
     ERRORS=$((ERRORS + 1))
 else
 
-HAS_FASTER_WHISPER=false
-if $PYTHON_CMD -c "import faster_whisper" 2>/dev/null; then
-    ok "faster-whisper installed"
-    HAS_FASTER_WHISPER=true
+HAS_MLX_WHISPER=false
+if $PYTHON_CMD -c "import mlx_whisper" 2>/dev/null; then
+    ok "mlx-whisper installed"
+    HAS_MLX_WHISPER=true
 else
-    offer_python_package_install "faster-whisper" ""
-    if $PYTHON_CMD -c "import faster_whisper" 2>/dev/null; then
-        HAS_FASTER_WHISPER=true
+    offer_python_package_install "mlx-whisper" ""
+    if $PYTHON_CMD -c "import mlx_whisper" 2>/dev/null; then
+        HAS_MLX_WHISPER=true
     fi
 fi
 
@@ -204,25 +214,21 @@ else
     echo "    3. Export: echo 'export HF_TOKEN=hf_...' >> ~/.zshrc"
 fi
 
-step "Downloading Whisper large-v3 model"
+step "Checking Whisper model cache"
 
 if [ -z "$PYTHON_CMD" ]; then
     warn "Skipped — install Python 3.12+ first: brew install python@3.12"
-elif [ "$HAS_FASTER_WHISPER" = "true" ]; then
-    WHISPER_MODEL_DIR="$HOME/.cache/huggingface/hub/models--Systran--faster-whisper-large-v3"
+elif [ "$HAS_MLX_WHISPER" = "true" ]; then
+    WHISPER_MODEL_DIR="$HOME/.cache/huggingface/hub/models--mlx-community--whisper-large-v3-mlx"
     if [ -d "$WHISPER_MODEL_DIR" ]; then
-        ok "Whisper large-v3 already downloaded"
+        ok "Whisper large-v3 MLX model already cached"
     else
-        echo "    Downloading large-v3 model (~3 GB)..."
-        $PYTHON_CMD -c "
-from faster_whisper import WhisperModel
-print('Downloading model...')
-model = WhisperModel('large-v3', device='cpu', compute_type='int8')
-print('Done.')
-" 2>/dev/null && ok "Whisper large-v3 downloaded" || warn "Model download failed — will retry on first use"
+        warn "Whisper large-v3 MLX model not cached yet"
+        echo "    mlx-whisper downloads models on first transcription or fit run."
+        echo "    Expected cache path: $WHISPER_MODEL_DIR"
     fi
 else
-    warn "Skipped — install faster-whisper first, then re-run"
+    warn "Skipped — install mlx-whisper first, then re-run"
 fi
 
 step "Applying patches to trnscrb"
@@ -260,8 +266,49 @@ if [ -f "$CONFIG_DIR/echobox.yaml" ]; then
     ok "Config already exists: config/echobox.yaml"
 else
     cp "$CONFIG_DIR/echobox.example.yaml" "$CONFIG_DIR/echobox.yaml"
+    CONFIG_CREATED=true
     ok "Created config/echobox.yaml from example"
     echo "    Edit this file to configure your context sources and preferences."
+fi
+
+step "Selecting models for this machine"
+
+if [ -z "$PYTHON_CMD" ]; then
+    warn "Skipped model fit — Python 3.12+ is required"
+    FIT_SKIPPED=true
+elif [ ! -x "$ECHOBOX_DIR/echobox" ]; then
+    warn "Skipped model fit — echobox CLI is not executable yet"
+    FIT_SKIPPED=true
+else
+    HAS_WHISPER_MODEL=false
+    HAS_MLX_MODEL=false
+
+    if grep -Eq '^whisper_model:[[:space:]]*[^#[:space:]].*$' "$CONFIG_DIR/echobox.yaml"; then
+        HAS_WHISPER_MODEL=true
+    fi
+    if grep -Eq '^mlx_model:[[:space:]]*[^#[:space:]].*$' "$CONFIG_DIR/echobox.yaml"; then
+        HAS_MLX_MODEL=true
+    fi
+
+    SHOULD_RUN_FIT=false
+    if [ "$CONFIG_CREATED" = "true" ] || [ "$HAS_WHISPER_MODEL" = "false" ] || [ "$HAS_MLX_MODEL" = "false" ]; then
+        SHOULD_RUN_FIT=true
+    elif confirm_default_no "  Re-run hardware fit to re-check models for this Mac?"; then
+        SHOULD_RUN_FIT=true
+    else
+        ok "Keeping existing whisper_model and mlx_model settings"
+    fi
+
+    if [ "$SHOULD_RUN_FIT" = "true" ]; then
+        echo "    Running ./echobox fit --auto"
+        if "$ECHOBOX_DIR/echobox" fit --auto; then
+            FIT_RAN=true
+            ok "Model fit completed"
+        else
+            FIT_SKIPPED=true
+            warn "Model fit failed — run ./echobox fit after fixing the issue above"
+        fi
+    fi
 fi
 
 step "Setting up directories and launchd service"
@@ -349,11 +396,19 @@ echo ""
 echo -e "  ${GREEN}Completed in ${ELAPSED}s${NC}"
 echo ""
 echo "  Next steps:"
-echo "    1. Edit config/echobox.yaml"
-echo "    2. Install Python 3.12+: brew install python@3.12"
-echo "    3. Install PyYAML: python3.12 -m pip install --user pyyaml"
-echo "    4. Run ./echobox fit to find the best models for your hardware"
-echo "    5. Apply trnscrb patches (see patches/README.md)"
-echo "    6. Start: ./echobox watch"
-echo "    7. Or load the launchd service for auto-start"
+echo "    1. Review config/echobox.yaml"
+if [ "$FIT_SKIPPED" = "true" ] && [ "$FIT_RAN" = "false" ]; then
+    echo "    2. Run ./echobox fit after the missing dependency or error is fixed"
+    echo "    3. Start your MLX server with the configured mlx_model"
+    echo "    4. Run ./echobox status and ./echobox demo"
+    echo "    5. Apply trnscrb patches (see patches/README.md)"
+    echo "    6. Start: ./echobox watch"
+    echo "    7. Or load the launchd service for auto-start"
+else
+    echo "    2. Start your MLX server with the configured mlx_model"
+    echo "    3. Run ./echobox status and ./echobox demo"
+    echo "    4. Apply trnscrb patches (see patches/README.md)"
+    echo "    5. Start: ./echobox watch"
+    echo "    6. Or load the launchd service for auto-start"
+fi
 echo ""

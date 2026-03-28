@@ -91,11 +91,14 @@ def main():
     probe_cfg.unlink()
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-        f.write("whisper_model: large-v3\nmlx_model: old-model\n# mlx_url: http://commented\n")
+        f.write("whisper_model: mlx-community/whisper-large-v3-mlx\nmlx_model: old-model\n# mlx_url: http://commented\n")
         f.flush()
         cfg = Path(f.name)
 
-    check(read_config_value(cfg, "whisper_model") == "large-v3", "read existing key")
+    check(
+        read_config_value(cfg, "whisper_model") == "mlx-community/whisper-large-v3-mlx",
+        "read existing key",
+    )
     check(read_config_value(cfg, "nonexistent") == "", "read missing key returns empty")
 
     write_config_value(cfg, "mlx_model", "new-model")
