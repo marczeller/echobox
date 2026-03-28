@@ -932,6 +932,10 @@ def main():
         transcript_text=transcript_text,
     )
 
+    context_sections = curated_context.count("<") // 2 if curated_context else 0
+    logger.emit(f"Context: {len(curated_context)} chars, {context_sections} sections"
+                + (f" (calendar, docs, messages, web, prior)" if context_sections > 0 else " (no context injected)"))
+
     try:
         template_text = load_prompt_template(config)
         prompt = build_prompt(
