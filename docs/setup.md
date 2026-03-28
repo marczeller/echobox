@@ -9,6 +9,7 @@ The real first-run sequence is:
 ```bash
 ./install.sh
 ./echobox status
+./echobox smart-setup
 ./echobox fit
 ./echobox demo
 ```
@@ -62,7 +63,23 @@ source ~/.zshrc
 
 If you want the minimal interactive config wizard instead of editing YAML directly, delete `config/echobox.yaml` first and then run `./echobox setup`.
 
-### Step 5: Edit `config/echobox.yaml`
+### Step 5: Draft Context Sources and Meeting Types
+
+Optional but recommended for agent-assisted setup:
+
+```bash
+./echobox smart-setup
+```
+
+If you want to inspect recent calendar titles and attendee domains too, get user consent first and then run:
+
+```bash
+./echobox smart-setup --with-calendar
+```
+
+This command is advisory. It does not rewrite `config/echobox.yaml`.
+
+### Step 6: Edit `config/echobox.yaml`
 
 At minimum, review:
 
@@ -73,7 +90,7 @@ At minimum, review:
 - `context_sources.calendar.command`
 - `publish.engine` and `publish.platform`
 
-### Step 6: Find the Best Models for Your Hardware
+### Step 7: Find the Best Models for Your Hardware
 
 ```bash
 ./echobox fit
@@ -81,7 +98,7 @@ At minimum, review:
 
 This writes recommended `whisper_model` and `mlx_model` values into `config/echobox.yaml`.
 
-### Step 7: Start the LLM Server
+### Step 8: Start the LLM Server
 
 **macOS (MLX):**
 
@@ -90,18 +107,18 @@ python3.12 -m pip install --user mlx-lm
 mlx_lm.server --model <configured-mlx_model> --port 8090
 ```
 
-### Step 8: Apply `trnscrb` Patch Instructions
+### Step 9: Apply `trnscrb` Patch Instructions
 
 Read [patches/README.md](../patches/README.md) and manually apply the six documented `trnscrb` changes. These files are instruction files, not guaranteed applicable unified diffs.
 
-### Step 9: Smoke-Test the Pipeline
+### Step 10: Smoke-Test the Pipeline
 
 ```bash
 ./echobox demo
 ./echobox quality
 ```
 
-### Step 10: Start Recording
+### Step 11: Start Recording
 
 ```bash
 ./echobox watch

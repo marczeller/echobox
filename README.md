@@ -1,12 +1,31 @@
 # Echobox
 
-> **Status: Alpha** — for technical macOS users comfortable with CLI tools and manual setup
->
-> **Alpha** — macOS only, requires manual setup
+> **Alpha** — macOS only, for technical users comfortable with CLI tools and manual setup
 
 Echobox is a self-hosted call intelligence pipeline for macOS. It records calls, transcribes them with Whisper, identifies speakers, enriches the transcript with a local MLX server and project context, and publishes a clean HTML report you can search later.
 
 Core processing stays on your machine: transcription, diarization, and enrichment run locally. Optional integrations such as web lookup, Claude-powered report generation, and Vercel publishing only make outbound requests when you enable them.
+
+![Sample Report](docs/report-screenshot.png)
+
+## What Happens When You Take a Call
+
+1. **Call detected** — trnscrb watches your browser tabs for Meet/Zoom/Teams URLs
+2. **Audio captured** — BlackHole records system audio (both sides of the call) to WAV
+3. **Call ends** — trnscrb fires the on-stop hook, triggering the pipeline
+4. **Transcribed** — faster-whisper transcribes the WAV locally on Apple Silicon
+5. **Speakers labeled** — pyannote.audio diarizes speakers (SPEAKER_00, SPEAKER_01...)
+6. **Calendar matched** — the transcript timestamp is matched to your calendar event, pulling attendee names
+7. **Context curated** — based on meeting type, relevant docs/messages/web context is gathered
+8. **LLM enrichment** — everything is sent to your local MLX model: transcript + attendees + context. It produces a structured analysis with speaker identification, decisions, action items with owners and deadlines, and follow-ups
+9. **JSON sidecar** — structured data (participants, decisions, action items) is extracted into a JSON file for integrations
+10. **HTML report** — a styled dark-themed report is generated with stat cards, speaker tables, and colored owner tags
+11. **Published** — report saved locally (or deployed to password-gated Vercel)
+12. **Notification** — optional webhook fires with the report URL and meeting summary
+
+Total time from call end to report: **1-3 minutes**. Zero human intervention.
+
+After the call: `echobox list` to browse, `echobox open` to view the report, `echobox search "topic"` to find past discussions, `echobox actions` to see all outstanding action items across calls.
 
 ## Why Use It
 
@@ -41,10 +60,11 @@ git clone https://github.com/marczeller/echobox.git && cd echobox
 ```
 
 1. Install dependencies and configure with `./install.sh`
-2. Apply the manual `trnscrb` patch instructions in [patches/README.md](patches/README.md)
-3. Start your MLX model server
-4. Run `./echobox demo` to verify
-5. Run `./echobox watch` to start recording
+2. Optionally run `./echobox smart-setup` to probe the machine and draft context-source recommendations
+3. Apply the manual `trnscrb` patch instructions in [patches/README.md](patches/README.md)
+4. Start your MLX model server
+5. Run `./echobox demo` to verify
+6. Run `./echobox watch` to start recording
 
 See a [sample report](docs/sample-report.html) generated from the demo fixtures.
 
@@ -72,6 +92,7 @@ See a [sample report](docs/sample-report.html) generated from the demo fixtures.
 | `echobox actions` | Show action items across enriched calls |
 | `echobox summary` | Show a weekly cross-call summary |
 | `echobox reprocess <name>` | Re-run enrichment and publishing for a call |
+| `echobox smart-setup [--with-calendar]` | Probe the machine and draft setup recommendations |
 | `echobox status` | Check whether the pipeline is configured correctly |
 | `echobox config` | Show parsed config values |
 | `echobox quality` | Run pipeline and context quality checks |

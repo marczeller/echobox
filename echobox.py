@@ -24,6 +24,7 @@ from pipeline import setup as setup_module
 from pipeline import show_config as show_config_module
 from pipeline import status as status_module
 from pipeline import summary as summary_module
+from pipeline import smart_setup as smart_setup_module
 from pipeline.enrich import ConfigError
 from pipeline.enrich import get_config
 from pipeline.enrich import load_config
@@ -412,6 +413,17 @@ def cmd_setup(ctx: AppContext, _args: argparse.Namespace) -> int:
     )
 
 
+def cmd_smart_setup(ctx: AppContext, args: argparse.Namespace) -> int:
+    smart_setup_args = ["pipeline/smart_setup.py"]
+    if args.format:
+        smart_setup_args.extend(["--format", args.format])
+    if args.with_calendar:
+        smart_setup_args.append("--with-calendar")
+    if args.days is not None:
+        smart_setup_args.extend(["--days", str(args.days)])
+    return run_python_module(smart_setup_module.main, smart_setup_args)
+
+
 def cmd_search(ctx: AppContext, args: argparse.Namespace) -> int:
     return run_python_module(
         search_module.main,
@@ -532,6 +544,7 @@ def custom_help(version: str) -> str:
 Getting started:
   echobox status              Check what's installed and configured
   echobox setup               Interactive config wizard
+  echobox smart-setup         Probe machine and draft setup recommendations
   echobox fit                 Pick the best models for your hardware
   echobox demo                Try the pipeline on sample data
 
@@ -583,6 +596,10 @@ def build_parser() -> argparse.ArgumentParser:
     publish_parser.add_argument("enrichment")
     subparsers.add_parser("watch", add_help=False)
     subparsers.add_parser("setup", add_help=False)
+    smart_setup_parser = subparsers.add_parser("smart-setup", add_help=False)
+    smart_setup_parser.add_argument("--format", choices=("markdown", "json"), default="markdown")
+    smart_setup_parser.add_argument("--with-calendar", action="store_true")
+    smart_setup_parser.add_argument("--days", type=int, default=14)
     subparsers.add_parser("status", add_help=False)
     fit_parser = subparsers.add_parser("fit", add_help=False)
     fit_parser.add_argument("fit_args", nargs=argparse.REMAINDER)
@@ -629,6 +646,7 @@ def main(argv: list[str] | None = None) -> int:
         "reprocess": cmd_reprocess,
         "search": cmd_search,
         "setup": cmd_setup,
+        "smart-setup": cmd_smart_setup,
         "status": cmd_status,
         "summary": cmd_summary,
         "test": cmd_test,

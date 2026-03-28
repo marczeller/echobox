@@ -33,6 +33,34 @@ Important:
 - Use `./echobox setup` only when the user wants the minimal interactive wizard and either has no config yet or is willing to delete `config/echobox.yaml` first.
 - The files in `patches/*.diff` are not guaranteed to be applicable unified diffs. They are patch instructions for manual changes to the installed `trnscrb` source.
 
+## Intelligent Setup (Agent Playbook)
+
+For alpha users, treat intelligent setup as an agent-assisted playbook, not as silent product automation. The goal is to draft a good `config/echobox.yaml` faster, with explicit user consent around private data.
+
+Recommended sequence:
+
+1. Run `./install.sh` and `./echobox status` first.
+2. Ask for consent before probing private sources like Calendar, Messages, Slack exports, or local notes.
+3. Run `./echobox smart-setup` to probe the machine and draft context-source recommendations.
+4. Interview the user about actual meeting types: investor, board, client, team sync, recruiting, support, and 1:1s.
+5. If the user consents and a calendar CLI is available, run `./echobox smart-setup --with-calendar` to inspect recent event titles and attendee domains.
+6. Edit `config/echobox.yaml` directly. Do not let the probe script silently rewrite it.
+7. Review the suggested `context_sources.*`, `team.*`, and `meeting_types.*` values with the user before enabling them.
+
+What to probe on macOS:
+
+- Calendar CLIs: `gcalcli`, `gws`, `icalBuddy`
+- Messaging sources: `~/Library/Messages/chat.db`, Slack.app presence, Slack export folders if the user points to them
+- Project context: `PROJECT_DIR`, common project folders, notes directories, Obsidian presence
+- Recording prerequisites: `ffmpeg`, `trnscrb`, BlackHole
+
+Guardrails:
+
+- Prefer metadata probes over reading private content. Presence, readability, and command availability are usually enough for the first pass.
+- Calendar inspection is opt-in. Use it to infer common title patterns, not to dump event contents into docs or chat.
+- Treat Messages.app access as privacy-sensitive and macOS-permission-sensitive.
+- Never commit user-specific paths, tokens, passwords, or generated config values.
+
 ## Command Surface
 
 These are the commands exposed by `./echobox` today:
@@ -50,6 +78,7 @@ These are the commands exposed by `./echobox` today:
 | `echobox publish <enrichment>` | Generate and optionally deploy an HTML report |
 | `echobox watch` | Start the `trnscrb` watcher on macOS |
 | `echobox setup` | Minimal interactive config wizard |
+| `echobox smart-setup [--with-calendar]` | Probe the machine and draft setup recommendations |
 | `echobox status` | Check dependencies, config, model server reachability, and data dirs |
 | `echobox fit` | Benchmark and select Whisper and LLM models |
 | `echobox config` | Show parsed config values |
