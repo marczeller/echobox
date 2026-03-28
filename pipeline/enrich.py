@@ -663,10 +663,17 @@ def extract_structured_data(enrichment_md: str, meta: dict, classification: dict
                 data["decisions"].append(li.group(1))
 
         elif "action" in current_section:
-            li = re.match(r"^[-*]\s+\*{0,2}\[(.+?)\]\*{0,2}\s+(.+)", stripped)
+            # Match: - **[Owner Name]** task  OR  - **Owner Name** task
+            li = (
+                re.match(r"^[-*]\s+\*{2}\[(.+?)\]\*{2}\s+(.+)", stripped)  # **[Owner]** task
+                or re.match(r"^[-*]\s+\*{2}(.+?)\*{2}\s+(.+)", stripped)   # **Owner** task
+                or re.match(r"^[-*]\s+\[(.+?)\]\s+(.+)", stripped)          # [Owner] task
+            )
             if li:
                 owner = li.group(1).strip()
                 task = li.group(2).strip()
+                if owner.lower() in ("no", "none", "n/a", ""):
+                    continue
                 deadline_match = re.search(r"\*?\((?:by\s+)?(.+?)\)\*?$", task)
                 deadline = deadline_match.group(1) if deadline_match else ""
                 if deadline:
