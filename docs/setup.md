@@ -26,7 +26,7 @@ Important:
 ### Step 1: Install Echobox and Dependencies
 
 ```bash
-git clone https://github.com/<your-user>/echobox.git ~/echobox
+git clone https://github.com/marczeller/echobox.git ~/echobox
 cd ~/echobox
 ./install.sh
 ```

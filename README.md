@@ -27,7 +27,7 @@ Core processing stays on your machine: transcription, diarization, and enrichmen
 ## Quick Start
 
 ```bash
-git clone https://github.com/<your-user>/echobox.git && cd echobox
+git clone https://github.com/marczeller/echobox.git && cd echobox
 ./install.sh
 ./echobox.sh status
 ./echobox.sh fit

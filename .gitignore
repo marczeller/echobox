@@ -18,6 +18,11 @@ __pycache__/
 # macOS
 .DS_Store
 
+# AI assistant state
+.claude/
+.codex/
+.cursor/
+
 # Internal planning artifacts
 docs/superpowers/
 
