@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Call Report: Q2 Roadmap Sync</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;700;800&family=Fragment+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+:root {
+    --bg: #10131a;
+    --bg-glow: radial-gradient(circle at top, rgba(104, 145, 208, 0.18), transparent 42%);
+    --card: rgba(18, 23, 34, 0.88);
+    --card-strong: rgba(22, 28, 41, 0.96);
+    --text: #f3efe8;
+    --dim: #a9a39b;
+    --accent: #ff7b54;
+    --accent-soft: rgba(255, 123, 84, 0.16);
+    --border: rgba(255, 255, 255, 0.08);
+    --radius: 14px;
+    --font-body: 'Bricolage Grotesque', system-ui, sans-serif;
+    --font-mono: 'Fragment Mono', 'SF Mono', monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: var(--font-body);
+    background: var(--bg);
+    background-image: var(--bg-glow);
+    color: var(--text);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+}
+
+header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(10, 14, 20, 0.78);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+}
+
+.header-inner {
+    max-width: 920px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.header-title {
+    font-size: 19px;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+}
+
+.header-date {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--dim);
+}
+
+.tabs {
+    display: flex;
+    gap: 4px;
+}
+
+.tab {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    padding: 8px 14px;
+    background: transparent;
+    color: var(--dim);
+    border: 1px solid transparent;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: color 0.18s ease, background-color 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+
+.tab:hover { color: var(--text); transform: translateY(-1px); }
+
+.tab.active {
+    color: var(--text);
+    background: var(--card);
+    border-color: var(--border);
+}
+
+main {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 32px 24px 80px;
+}
+
+.hero {
+    margin-bottom: 28px;
+    padding: 28px;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) + 8px);
+    background:
+        linear-gradient(135deg, rgba(255, 123, 84, 0.14), rgba(104, 145, 208, 0.08)),
+        var(--card-strong);
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.22);
+}
+
+.eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 12px;
+}
+
+.hero p {
+    max-width: 62ch;
+    color: var(--dim);
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 14px;
+    margin-top: 22px;
+}
+
+.stat-card {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.stat-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.stat-value {
+    font-size: 22px;
+    font-weight: 800;
+    margin-top: 8px;
+    letter-spacing: -0.04em;
+}
+
+.tab-content { display: none; opacity: 0; transform: translateY(8px); }
+.tab-content.active { display: block; animation: tabIn 220ms ease forwards; }
+.tab-content.leaving { display: block; animation: tabOut 180ms ease forwards; }
+
+@keyframes tabIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes tabOut {
+    from { opacity: 1; transform: translateY(0); }
+    to { opacity: 0; transform: translateY(6px); }
+}
+
+.enrichment-content,
+.transcript {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) + 4px);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.18);
+}
+
+.enrichment-content {
+    padding: 28px;
+}
+
+h2 {
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    margin-top: 40px;
+    margin-bottom: 16px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+}
+
+h2:first-child {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+}
+
+h3 {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-top: 24px;
+    margin-bottom: 12px;
+}
+
+p { margin-bottom: 14px; color: #ddd7cf; }
+
+ul {
+    list-style: none;
+    margin-bottom: 16px;
+}
+
+ul li {
+    position: relative;
+    padding: 14px 16px 14px 44px;
+    margin-bottom: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+ul li::before {
+    content: '';
+    position: absolute;
+    left: 16px;
+    top: 18px;
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, var(--accent), #73a0ff);
+    box-shadow: 0 0 0 6px rgba(255, 123, 84, 0.08);
+}
+
+table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin-bottom: 16px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+thead th {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--dim);
+    text-align: left;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+tbody tr { transition: background-color 160ms ease; }
+tbody tr:hover td { background: rgba(115, 160, 255, 0.08); }
+
+tbody td {
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(106, 102, 94, 0.1);
+    font-size: 14px;
+}
+
+tbody tr:last-child td { border-bottom: 0; }
+
+.position {
+    background: rgba(255, 255, 255, 0.03);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    padding: 16px 20px;
+    margin: 16px 0;
+}
+
+.position-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+}
+
+.copy-btn {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    cursor: pointer;
+    float: right;
+    margin-bottom: 12px;
+    transition: transform 0.18s ease, background-color 0.18s ease;
+}
+
+.copy-btn:hover {
+    transform: translateY(-1px);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.transcript {
+    padding: 24px;
+}
+
+.transcript-lines {
+    display: grid;
+    gap: 10px;
+}
+
+.transcript-line {
+    display: grid;
+    grid-template-columns: 160px minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+    padding: 14px 16px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.speaker-name {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.speaker-text,
+.transcript-line-plain {
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 14px;
+    line-height: 1.65;
+}
+
+.transcript-gap {
+    height: 8px;
+}
+
+.transcript-empty {
+    margin: 0;
+    color: var(--dim);
+}
+
+.transcript .speaker-0 { border-left: 4px solid #ff7b54; }
+.transcript .speaker-0 .speaker-name { color: #ff9a7d; }
+.transcript .speaker-1 { border-left: 4px solid #73a0ff; }
+.transcript .speaker-1 .speaker-name { color: #95b8ff; }
+.transcript .speaker-2 { border-left: 4px solid #5fd1a7; }
+.transcript .speaker-2 .speaker-name { color: #86e2c0; }
+.transcript .speaker-3 { border-left: 4px solid #e087ff; }
+.transcript .speaker-3 .speaker-name { color: #ebb0ff; }
+.transcript .speaker-4 { border-left: 4px solid #ffd166; }
+.transcript .speaker-4 .speaker-name { color: #ffe39a; }
+.transcript .speaker-5 { border-left: 4px solid #ff8cab; }
+.transcript .speaker-5 .speaker-name { color: #ffb4c8; }
+
+.owner-tag {
+    --owner-bg: var(--accent-soft);
+    --owner-fg: var(--accent);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 5px 9px;
+    border-radius: 999px;
+    background: var(--owner-bg);
+    color: var(--owner-fg);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    letter-spacing: 0.5px;
+    margin-right: 8px;
+    vertical-align: middle;
+}
+
+.owner-tag::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: currentColor;
+}
+
+.action-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.action-item::before { display: none; }
+
+.action-copy { flex: 1 1 320px; }
+
+footer {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--dim);
+    text-align: center;
+    padding: 24px;
+    border-top: 1px solid var(--border);
+    margin-top: 48px;
+}
+
+@media (max-width: 720px) {
+    .stats-grid { grid-template-columns: 1fr 1fr; }
+    .header-inner { flex-direction: column; gap: 12px; align-items: flex-start; }
+    .transcript-line { grid-template-columns: 1fr; gap: 8px; }
+    .hero,
+    .enrichment-content,
+    .transcript { padding: 22px; }
+}
+
+@media (max-width: 375px) {
+    .stats-grid { grid-template-columns: 1fr; }
+    .tab { flex: 1 1 0; text-align: center; }
+}
+
+@media print {
+    header { position: static; background: white; backdrop-filter: none; border-bottom: 2px solid #333; }
+    body { background: white; color: #111; }
+    .hero,
+    .enrichment-content,
+    .transcript,
+    .stat-card { background: #f5f5f5; border-color: #ccc; box-shadow: none; }
+    .tab { display: none; }
+    .tab-content { display: block !important; page-break-inside: avoid; opacity: 1 !important; transform: none !important; }
+    .position { border-left-color: #333; background: #f5f5f5; }
+    h2 { border-top-color: #ccc; }
+    footer { border-top-color: #ccc; color: #999; }
+    .copy-btn { display: none; }
+    :root { --text: #111; --dim: #666; --card: #f5f5f5; --bg: white; }
+}
+</style>
+</head>
+<body>
+
+<header>
+    <div class="header-inner">
+        <div>
+            <div class="header-title">Call Report: Q2 Roadmap Sync</div>
+            <div class="header-date">2026-03-28</div>
+        </div>
+        <div class="tabs">
+            <button class="tab active" onclick="show('report', event)">Report</button>
+            <button class="tab" onclick="show('transcript', event)">Transcript</button>
+        </div>
+    </div>
+</header>
+
+<main>
+    <section class="hero">
+        <div class="eyebrow">Client Share Report</div>
+        <p>Clean post-call output with the meeting shape, follow-through owners, and a readable transcript view for external distribution.</p>
+        <div class="stats-grid">
+            <article class="stat-card"><div class="stat-label">Participants</div><div class="stat-value">2</div></article><article class="stat-card"><div class="stat-label">Action Items</div><div class="stat-value">3</div></article><article class="stat-card"><div class="stat-label">Meeting Duration</div><div class="stat-value">2:34</div></article>
+        </div>
+    </section>
+
+    <div id="report" class="tab-content active">
+        <div class="enrichment-content">
+            <h1>Q2 Roadmap Sync</h1>
+<h2>Meeting Summary</h2>
+<p>Alex Chen and Priya Raman reviewed Q2 roadmap priorities ahead of the board meeting and focused on the recent retention drop in the enterprise cohort. They agreed the main problem is friction in the onboarding flow, especially the API credential step, and aligned on a plan to simplify activation before the next review.</p>
+<h2>Speaker Identification</h2>
+<div class="table-wrap"><table><thead><tr><th>Speaker Label</th><th>Identified As</th><th>Confidence</th></tr></thead><tbody><tr><td>SPEAKER_00</td><td>Alex Chen</td><td>high</td></tr><tr><td>SPEAKER_01</td><td>Priya Raman</td><td>high</td></tr></tbody></table></div>
+<h2>Key Decisions</h2>
+<ul>
+<li>Prioritize onboarding fixes over new dashboard polish for the next sprint.</li>
+<li>Reduce the integration setup flow so users can reach first value before entering every credential.</li>
+<li>Bring updated retention analysis and an onboarding prototype to the board prep review next week.</li>
+</ul>
+<h2>Action Items</h2>
+<ul>
+<li class="action-item"><span class="owner-tag owner-priya-raman" style="--owner-bg: rgba(255, 123, 84, 0.18); --owner-fg: #ff9a7d;">Priya Raman</span><span class="action-copy">Pull step-level drop-off metrics for the onboarding wizard and share a short analysis <em>(by Tuesday)</em></span></li>
+<li class="action-item"><span class="owner-tag owner-alex-chen" style="--owner-bg: rgba(255, 209, 102, 0.18); --owner-fg: #ffe39a;">Alex Chen</span><span class="action-copy">Draft a revised onboarding flow that delays the API key wall until after first value <em>(by Wednesday)</em></span></li>
+<li class="action-item"><span class="owner-tag owner-alex-chen" style="--owner-bg: rgba(255, 209, 102, 0.18); --owner-fg: #ffe39a;">Alex Chen</span><span class="action-copy">Update the board prep deck with the retention narrative and mitigation plan <em>(before next week&#x27;s board meeting)</em></span></li>
+</ul>
+<h2>Follow-ups Needed</h2>
+<p>The team still needs to confirm whether the retention dip is fully explained by onboarding friction or if account provisioning latency also contributed. Priya will validate that with funnel data and support tickets before the next meeting.</p>
+<h2>Context for Next Meeting</h2>
+<p>Bring the updated funnel metrics, a prototype or wireframe of the simplified onboarding flow, and a recommendation on whether the credential-gating change can ship behind a feature flag.</p>
+        </div>
+    </div>
+
+    <div id="transcript" class="tab-content">
+        <button class="copy-btn" onclick="copyTranscript()">Copy transcript</button>
+        <div class="transcript" id="transcript-text"><div class="transcript-lines"><div class="transcript-line transcript-line-plain">Date: 2026-03-15</div><div class="transcript-line transcript-line-plain">Duration: 2:34</div><div class="transcript-gap"></div><div class="transcript-line speaker-0"><span class="speaker-name">00:00 · SPEAKER_00</span><span class="speaker-text">Hey, thanks for jumping on this call. I wanted to sync on the Q2 roadmap before the board meeting next week.</span></div><div class="transcript-gap"></div><div class="transcript-line speaker-1"><span class="speaker-name">00:08 · SPEAKER_01</span><span class="speaker-text">Of course. I&#x27;ve been reviewing the product metrics and I think we need to discuss the retention numbers.</span></div><div class="transcript-gap"></div><div class="transcript-line speaker-0"><span class="speaker-name">00:15 · SPEAKER_00</span><span class="speaker-text">Agreed. We saw a dip in week-over-week retention for the enterprise cohort. Down from 94% to 89% in February.</span></div><div class="transcript-gap"></div><div class="transcript-line speaker-1"><span class="speaker-name">00:25 · SPEAKER_01</span><span class="speaker-text">Right. I think the root cause is the onboarding flow. We changed the setup wizard in January and the drop-off increased at step three.</span></div><div class="transcript-gap"></div><div class="transcript-line speaker-0"><span class="speaker-name">00:38 · SPEAKER_00</span><span class="speaker-text">Step three is the integration configuration, correct?</span></div><div class="transcript-gap"></div><div class="transcript-line speaker-1"><span class="speaker-name">00:41 · SPEAKER_01</span><span class="speaker-text">Yes. The API key entry screen. Users are abandoning there because we&#x27;re asking for three different credentials before they see any value.</span></div><div class="transcript-gap"></div><div class="transcript-line speaker-0"><span class="speaker-name">00:52 · SPEAKER_00</span><span class="speaker-text">What if we defer the third credential to after the first successful sync? Let them see data flowing before we ask for the analytics integration.</span></div><div class="transcript-gap"></div><div class="transcript-line speaker-1"><span class="speaker-name">01:05 · SPEAKER_01</span><span class="speaker-text">That&#x27;s exactly what the product team proposed. They have a prototype ready. We could ship it in the next sprint.</span></div><div class="transcript-gap"></div><div class="transcript-line speaker-0"><span class="speaker-name">01:14 · SPEAKER_00</span><span class="speaker-text">Let&#x27;s do it. Can you get me the expected impact on retention? I want to include it in the board deck.</span></div><div class="transcript-gap"></div><div class="transcript-line speaker-1"><span class="speaker-name">01:22 · SPEAKER_01</span><span class="speaker-text">I&#x27;ll have the analysis by Thursday. Based on the funnel data, we expect a 3-5 point recovery.</span></div><div class="transcript-gap"></div><div class="transcript-line speaker-0"><span class="speaker-name">01:30 · SPEAKER_00</span><span class="speaker-text">Perfect. The other thing I wanted to flag — we got an inbound from Acme Corp. They want a dedicated instance.</span></div><div class="transcript-gap"></div><div class="transcript-line speaker-1"><span class="speaker-name">01:40 · SPEAKER_01</span><span class="speaker-text">Acme Corp? That&#x27;s a Fortune 500. What&#x27;s the deal size?</span></div><div class="transcript-gap"></div><div class="transcript-line speaker-0"><span class="speaker-name">01:45 · SPEAKER_00</span><span class="speaker-text">They&#x27;re talking 200 seats at enterprise pricing. Sarah from sales is leading it. The technical evaluation starts next Monday.</span></div><div class="transcript-gap"></div><div class="transcript-line speaker-1"><span class="speaker-name">01:55 · SPEAKER_01</span><span class="speaker-text">That would be our largest deal this quarter. I&#x27;ll make sure the infrastructure team is ready for the dedicated deployment.</span></div><div class="transcript-gap"></div><div class="transcript-line speaker-0"><span class="speaker-name">02:05 · SPEAKER_00</span><span class="speaker-text">Great. Let&#x27;s regroup on Friday to finalize the board deck. I&#x27;ll send the agenda.</span></div><div class="transcript-gap"></div><div class="transcript-line speaker-1"><span class="speaker-name">02:12 · SPEAKER_01</span><span class="speaker-text">Sounds good. I&#x27;ll have the retention analysis and the Acme Corp technical requirements ready by then.</span></div><div class="transcript-gap"></div><div class="transcript-line speaker-0"><span class="speaker-name">02:20 · SPEAKER_00</span><span class="speaker-text">Thanks. Talk soon.</span></div><div class="transcript-gap"></div><div class="transcript-line speaker-1"><span class="speaker-name">02:22 · SPEAKER_01</span><span class="speaker-text">Bye.</span></div></div></div>
+    </div>
+</main>
+
+<footer>
+    Generated by Echobox &middot; 2026-03-28
+</footer>
+
+<script>
+function show(id, evt) {
+    document.querySelectorAll('.tab-content').forEach(function(el) {
+        if (el.classList.contains('active')) {
+            el.classList.remove('active');
+            el.classList.add('leaving');
+            window.setTimeout(function() { el.classList.remove('leaving'); }, 180);
+        }
+    });
+    document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    if (evt) evt.target.classList.add('active');
+    else document.querySelector('[onclick*="' + id + '"]').classList.add('active');
+}
+function copyTranscript() {
+    var text = document.getElementById('transcript-text').innerText;
+    navigator.clipboard.writeText(text).then(function() {
+        var btn = document.querySelector('.copy-btn');
+        btn.textContent = 'Copied!';
+        setTimeout(function() { btn.textContent = 'Copy transcript'; }, 2000);
+    });
+}
+document.addEventListener('keydown', function(e) {
+    if (e.key === '1') show('report');
+    if (e.key === '2') show('transcript');
+});
+</script>
+
+</body>
+</html>
+

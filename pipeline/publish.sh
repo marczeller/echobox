@@ -12,14 +12,24 @@ TRANSCRIPT_DIR="$DATA_DIR/transcripts"
 TEMPLATE="$ECHOBOX_DIR/templates/report.html"
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/bin:$PATH"
-. "$ECHOBOX_DIR/pipeline/python.sh"
+ECHOBOX_PYTHON="${ECHOBOX_PYTHON:-python3}"
 
 CONFIG="$ECHOBOX_DIR/config/echobox.yaml"
 
 read_config() {
     local key="$1" default="$2"
     local val
-    val=$($ECHOBOX_PYTHON "$ECHOBOX_DIR/pipeline/read_config.py" "$CONFIG" "$key" "$default" 2>/dev/null)
+    val=$(
+        "$ECHOBOX_PYTHON" - "$CONFIG" "$key" "$default" <<'PY' 2>/dev/null
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(sys.argv[1]).parent.parent))
+from pipeline.read_config import read_value
+
+print(read_value(Path(sys.argv[1]), sys.argv[2], sys.argv[3]), end="")
+PY
+    )
     echo "${val:-$default}"
 }
 
@@ -154,5 +164,5 @@ VJ
 else
     echo "Report saved: $SITE_DIR/report.html"
     echo "file://$SITE_DIR/report.html" > "$STATE_DIR/last-report-url"
-    echo "  Open: ./echobox.sh open"
+    echo "  Open: ./echobox open"
 fi

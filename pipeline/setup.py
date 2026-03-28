@@ -66,9 +66,9 @@ def main() -> int:
     print(f"Config saved: {config_path}")
     print("")
     print("Next steps:")
-    print("  1. Run: ./echobox.sh fit          (find best models)")
+    print("  1. Run: ./echobox fit             (find best models)")
     print("  2. Start your MLX server")
-    print("  3. Run: ./echobox.sh watch         (start recording)")
+    print("  3. Run: ./echobox watch           (start recording)")
     print("")
     print(f"  Edit config for more options: {config_path}")
     return 0

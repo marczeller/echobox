@@ -95,7 +95,7 @@ def main():
         (enrichment_dir / f"{base}-enriched.json").write_text(json.dumps(sidecar))
 
         status = subprocess.run(
-            ["bash", "./echobox.sh", "status"],
+            [sys.executable, "echobox.py", "status"],
             cwd=REPO,
             env=env,
             capture_output=True,
@@ -106,7 +106,7 @@ def main():
         check("Pipeline: READY" in status.stdout, "status reports READY when dependencies are satisfied")
 
         listing = subprocess.run(
-            ["bash", "./echobox.sh", "list"],
+            [sys.executable, "echobox.py", "list"],
             cwd=REPO,
             env=env,
             capture_output=True,
@@ -119,7 +119,7 @@ def main():
 
         (enrichment_dir / f"{base}-enriched.json").unlink()
         actions = subprocess.run(
-            ["bash", "./echobox.sh", "actions"],
+            [sys.executable, "echobox.py", "actions"],
             cwd=REPO,
             env=env,
             capture_output=True,
@@ -130,7 +130,7 @@ def main():
         check("[Priya Raman]" in actions.stdout, "actions falls back to markdown when sidecar is missing")
 
         demo = subprocess.run(
-            ["bash", "./echobox.sh", "demo"],
+            [sys.executable, "echobox.py", "demo"],
             cwd=REPO,
             env=env,
             capture_output=True,

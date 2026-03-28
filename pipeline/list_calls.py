@@ -45,8 +45,8 @@ def main() -> int:
         print("  No calls recorded yet.")
         print("")
         print("  Get started:")
-        print("    ./echobox.sh watch     Start recording calls")
-        print("    ./echobox.sh demo      Try the pipeline on sample data")
+        print("    ./echobox watch        Start recording calls")
+        print("    ./echobox demo         Try the pipeline on sample data")
         return 0
 
     for transcript in transcripts[:60]:

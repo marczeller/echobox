@@ -83,7 +83,7 @@ def main() -> int:
 
     if found == 0:
         print("  No action items found.")
-        print("  Enrich some calls first: ./echobox.sh enrich <transcript>")
+        print("  Enrich some calls first: ./echobox enrich <transcript>")
     else:
         print(f"  {found} action item(s) total")
 

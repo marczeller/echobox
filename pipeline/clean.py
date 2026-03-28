@@ -101,7 +101,7 @@ def main() -> int:
         print(f"  Pruned files older than {args.days} days.")
     else:
         print("  To delete old files, run:")
-        print(f"    ./echobox.sh clean --older {args.days} --prune")
+        print(f"    ./echobox clean --older {args.days} --prune")
 
     return 0
 

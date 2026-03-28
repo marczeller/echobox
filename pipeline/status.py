@@ -239,16 +239,16 @@ def main() -> int:
     print("")
     if ready:
         print("Next:")
-        print("  ./echobox.sh demo      Validate the pipeline on sample data")
-        print("  ./echobox.sh watch     Start recording real calls")
+        print("  ./echobox demo         Validate the pipeline on sample data")
+        print("  ./echobox watch        Start recording real calls")
     else:
         print("Suggested next steps:")
         print("  ./install.sh           Fix missing dependencies interactively")
         if config_path.exists():
-            print("  ./echobox.sh fit       Re-check model choices after deps are installed")
+            print("  ./echobox fit          Re-check model choices after deps are installed")
         else:
-            print("  ./echobox.sh setup     Create config/echobox.yaml")
-        print("  ./echobox.sh demo      Check the user-facing output format")
+            print("  ./echobox setup        Create config/echobox.yaml")
+        print("  ./echobox demo         Check the user-facing output format")
     return 0
 
 

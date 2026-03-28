@@ -5,9 +5,9 @@
 Start every diagnosis with:
 
 ```bash
-./echobox.sh status
-./echobox.sh config
-./echobox.sh demo
+./echobox status
+./echobox config
+./echobox demo
 ```
 
 What each one tells you:
@@ -31,7 +31,7 @@ Logs live in `~/echobox-data/logs/`:
 
 Check these in order:
 
-1. `./echobox.sh status` should show `trnscrb` installed and BlackHole present.
+1. `./echobox status` should show `trnscrb` installed and BlackHole present.
 2. Verify the manual `trnscrb` patch instructions in `patches/README.md` were applied.
 3. Confirm BlackHole is part of your Multi-Output Device in Audio MIDI Setup.
 4. Confirm the system output device is that Multi-Output Device.
@@ -74,7 +74,7 @@ Check:
 - `whisper_model` in `config/echobox.yaml`
 - Whether your transcript source is using the expected model or backend
 
-If unsure, run `./echobox.sh fit` and re-check the resulting `whisper_model`.
+If unsure, run `./echobox fit` and re-check the resulting `whisper_model`.
 
 ## Diarization Issues
 
@@ -90,7 +90,7 @@ Common causes:
 Checks:
 
 ```bash
-./echobox.sh status
+./echobox status
 python3.12 -c "import pyannote.audio; print('ok')"
 ```
 
@@ -112,7 +112,7 @@ Check:
 
 Symptoms:
 
-- `./echobox.sh status` reports `MLX server: NOT RUNNING`
+- `./echobox status` reports `MLX server: NOT RUNNING`
 - `enrich` fails or falls back to limited output
 
 Check in order:
@@ -138,7 +138,7 @@ mlx_model: your-model-name
 mlx_url: http://your-server/v1/chat/completions
 ```
 
-Then restart the server and run `./echobox.sh status`.
+Then restart the server and run `./echobox status`.
 
 If you meant transcription model rather than enrichment model, edit `whisper_model` instead.
 
@@ -147,7 +147,7 @@ If you meant transcription model rather than enrichment model, edit `whisper_mod
 Your configured model is too large for available memory. Run:
 
 ```bash
-./echobox.sh fit
+./echobox fit
 ```
 
 Or set a smaller `mlx_model` manually and restart the server.
@@ -201,7 +201,7 @@ Check:
 Re-run publish explicitly:
 
 ```bash
-./echobox.sh publish ~/echobox-data/enrichments/your-file-enriched.md
+./echobox publish ~/echobox-data/enrichments/your-file-enriched.md
 ```
 
 ## Two-Machine Issues
@@ -249,8 +249,8 @@ notify:
 Run:
 
 ```bash
-./echobox.sh quality
-./echobox.sh test
+./echobox quality
+./echobox test
 ```
 
 `quality` checks pipeline readiness and context quality. `test` runs the Python smoke tests in `tests/`.

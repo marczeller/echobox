@@ -1,5 +1,9 @@
 # Echobox
 
+> **Status: Alpha** — for technical macOS users comfortable with CLI tools and manual setup
+>
+> **Alpha** — macOS only, requires manual setup
+
 Echobox is a self-hosted call intelligence pipeline for macOS. It records calls, transcribes them with Whisper, identifies speakers, enriches the transcript with a local MLX server and project context, and publishes a clean HTML report you can search later.
 
 Core processing stays on your machine: transcription, diarization, and enrichment run locally. Optional integrations such as web lookup, Claude-powered report generation, and Vercel publishing only make outbound requests when you enable them.
@@ -22,21 +26,27 @@ Core processing stays on your machine: transcription, diarization, and enrichmen
 | Calendar, docs, messages context | Works |
 | Local HTML publishing | Works |
 | Vercel publishing | Works |
-| Auto call detection | Works |
+| Auto call detection | Requires trnscrb + manual patches |
 
-## Quick Start
+## Setup
+
+> Requires: macOS (Apple Silicon), Homebrew, Python 3.12+
+
+> Prerequisites:
+> Apple Silicon, Homebrew, BlackHole, `trnscrb`, a HuggingFace token for pyannote, and a local MLX model/server.
 
 ```bash
 git clone https://github.com/marczeller/echobox.git && cd echobox
 ./install.sh
-./echobox.sh status
-./echobox.sh fit
-./echobox.sh demo
 ```
 
-Then edit `config/echobox.yaml`, start the MLX server that matches `mlx_url`, apply the manual `trnscrb` patch instructions in [patches/README.md](patches/README.md), and run `./echobox.sh watch`.
+1. Install dependencies and configure with `./install.sh`
+2. Apply the manual `trnscrb` patch instructions in [patches/README.md](patches/README.md)
+3. Start your MLX model server
+4. Run `./echobox demo` to verify
+5. Run `./echobox watch` to start recording
 
-If you prefer the minimal interactive wizard, run `./echobox.sh setup` before `./install.sh`, or delete `config/echobox.yaml` first, because `./install.sh` already creates the config file.
+See a [sample report](docs/sample-report.html) generated from the demo fixtures.
 
 ## How It Works
 
@@ -92,9 +102,9 @@ For configuration examples, see [config/echobox.example.yaml](config/echobox.exa
 Start with:
 
 ```bash
-./echobox.sh status
-./echobox.sh config
-./echobox.sh demo
+./echobox status
+./echobox config
+./echobox demo
 ```
 
 Logs live in `~/echobox-data/logs/`.

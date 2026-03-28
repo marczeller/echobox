@@ -10,9 +10,9 @@ if [ "$S" -ge 8 ] 2>/dev/null; then SCORE=$((SCORE+1)); else echo "1  [!!]README
 # 2. install.sh is executable and has error handling
 if [ -x install.sh ] && grep -q "set -e\|exit 1" install.sh 2>/dev/null; then SCORE=$((SCORE+1)); else echo "2  [!!]install.sh: not executable or no error handling"; fi
 
-# 3. echobox.sh CLI has help text and at least 4 commands
-S=$(grep -c "status\|enrich\|publish\|quality\|watch\|fit" echobox.sh 2>/dev/null)
-if [ "$S" -ge 6 ] 2>/dev/null; then SCORE=$((SCORE+1)); else echo "3  [!!]echobox.sh: missing commands"; fi
+# 3. echobox CLI has help text and at least 4 commands
+S=$(grep -c "status\|enrich\|publish\|quality\|watch\|fit" echobox.py 2>/dev/null)
+if [ "$S" -ge 6 ] 2>/dev/null; then SCORE=$((SCORE+1)); else echo "3  [!!]echobox.py: missing commands"; fi
 
 # 4. All pipeline scripts are executable
 NON_EXEC=$(find pipeline -name "*.sh" ! -perm -111 2>/dev/null | wc -l | tr -d ' ')
@@ -69,8 +69,8 @@ if [ "$ISSUES" -ge 5 ] 2>/dev/null; then SCORE=$((SCORE+1)); else echo "17 [!!]T
 # 18. design-decisions.md has table
 if grep -c "|.*|.*|" docs/design-decisions.md 2>/dev/null | grep -q "[5-9]\|[0-9][0-9]"; then SCORE=$((SCORE+1)); else echo "18 [!!]design-decisions: no table"; fi
 
-# 19. README is concise but complete (has Quick Start + How It Works + Commands)
-if grep -q "Quick Start" README.md 2>/dev/null && grep -q "Common Commands\|Command" README.md 2>/dev/null; then SCORE=$((SCORE+1)); else echo "19 [!!]README: missing Quick Start or Commands section"; fi
+# 19. README is concise but complete (has Setup + How It Works + Commands)
+if grep -q "Setup" README.md 2>/dev/null && grep -q "Common Commands\|Command" README.md 2>/dev/null; then SCORE=$((SCORE+1)); else echo "19 [!!]README: missing Setup or Commands section"; fi
 
 # 20. No unfinished markers left in code
 _t="TO""DO"; _f="FI""XME"; _h="HA""CK"; _x="X""XX"

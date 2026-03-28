@@ -113,7 +113,7 @@ def main() -> int:
 
     print("\nDemo complete. To run a real enrichment:")
     print("  1. Start your MLX server (mlx_lm.server)")
-    print("  2. Run: ./echobox.sh enrich tests/fixtures/2026-03-15_10-00_roadmap-sync.txt")
+    print("  2. Run: ./echobox enrich tests/fixtures/2026-03-15_10-00_roadmap-sync.txt")
 
     print("")
     print("Publishing fixture report...")

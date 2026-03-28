@@ -8,9 +8,9 @@ The real first-run sequence is:
 
 ```bash
 ./install.sh
-./echobox.sh status
-./echobox.sh fit
-./echobox.sh demo
+./echobox status
+./echobox fit
+./echobox demo
 ```
 
 Then edit `config/echobox.yaml`, start the MLX server that matches `mlx_url`, and continue with recording setup.
@@ -18,7 +18,7 @@ Then edit `config/echobox.yaml`, start the MLX server that matches `mlx_url`, an
 Important:
 
 - `./install.sh` already creates `config/echobox.yaml` if it does not exist.
-- `./echobox.sh setup` is optional. It only works as a wizard when no config exists yet. If `./install.sh` already created the config, either edit it directly or delete it before running `./echobox.sh setup`.
+- `./echobox setup` is optional. It only works as a wizard when no config exists yet. If `./install.sh` already created the config, either edit it directly or delete it before running `./echobox setup`.
 - Path settings in `config/echobox.yaml` support `~` and environment-variable expansion.
 
 ## macOS Setup (Apple Silicon)
@@ -56,11 +56,11 @@ source ~/.zshrc
 ### Step 4: Verify Current State
 
 ```bash
-./echobox.sh status
-./echobox.sh config
+./echobox status
+./echobox config
 ```
 
-If you want the minimal interactive config wizard instead of editing YAML directly, delete `config/echobox.yaml` first and then run `./echobox.sh setup`.
+If you want the minimal interactive config wizard instead of editing YAML directly, delete `config/echobox.yaml` first and then run `./echobox setup`.
 
 ### Step 5: Edit `config/echobox.yaml`
 
@@ -76,7 +76,7 @@ At minimum, review:
 ### Step 6: Find the Best Models for Your Hardware
 
 ```bash
-./echobox.sh fit
+./echobox fit
 ```
 
 This writes recommended `whisper_model` and `mlx_model` values into `config/echobox.yaml`.
@@ -97,14 +97,14 @@ Read [patches/README.md](../patches/README.md) and manually apply the six docume
 ### Step 9: Smoke-Test the Pipeline
 
 ```bash
-./echobox.sh demo
-./echobox.sh quality
+./echobox demo
+./echobox quality
 ```
 
 ### Step 10: Start Recording
 
 ```bash
-./echobox.sh watch
+./echobox watch
 ```
 
 Or load the launchd service created by `./install.sh`:

@@ -273,7 +273,7 @@ else
     <string>${PLIST_LABEL}</string>
     <key>ProgramArguments</key>
     <array>
-        <string>${ECHOBOX_DIR}/echobox.sh</string>
+        <string>${ECHOBOX_DIR}/echobox</string>
         <string>watch</string>
     </array>
     <key>RunAtLoad</key>
@@ -313,7 +313,7 @@ validate() {
     fi
 }
 
-validate "echobox.sh executable" "[ -x '$ECHOBOX_DIR/echobox.sh' ] || chmod +x '$ECHOBOX_DIR/echobox.sh'"
+validate "echobox executable" "[ -x '$ECHOBOX_DIR/echobox' ] || chmod +x '$ECHOBOX_DIR/echobox'"
 validate "Config exists" "[ -f '$CONFIG_DIR/echobox.yaml' ]"
 validate "Pipeline scripts present" "[ -f '$ECHOBOX_DIR/pipeline/enrich.py' ]"
 validate "Data directories exist" "[ -d '$HOME/echobox-data/transcripts' ]"
@@ -334,8 +334,8 @@ echo -e "  ${GREEN}Completed in ${ELAPSED}s${NC}"
 echo ""
 echo "  Next steps:"
 echo "    1. Edit config/echobox.yaml"
-echo "    2. Run ./echobox.sh fit to find the best models for your hardware"
+echo "    2. Run ./echobox fit to find the best models for your hardware"
 echo "    3. Apply trnscrb patches (see patches/README.md)"
-echo "    4. Start: ./echobox.sh watch"
+echo "    4. Start: ./echobox watch"
 echo "    5. Or load the launchd service for auto-start"
 echo ""

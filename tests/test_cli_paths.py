@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke tests for shell path expansion in echobox.sh."""
+"""Smoke tests for path expansion in echobox.py."""
 from __future__ import annotations
 
 import os
@@ -46,7 +46,7 @@ log_dir: ~/echobox-data/logs
         env["HOME"] = str(temp_home)
 
         result = subprocess.run(
-            ["bash", "./echobox.sh", "version"],
+            [sys.executable, "echobox.py", "version"],
             cwd=REPO,
             env=env,
             capture_output=True,

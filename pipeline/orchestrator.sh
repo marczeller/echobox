@@ -14,12 +14,22 @@ TRANSCRIPT_DIR="$DATA_DIR/transcripts"
 REPORT_DIR="$DATA_DIR/reports"
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/bin:$PATH"
-. "$ECHOBOX_DIR/pipeline/python.sh"
+ECHOBOX_PYTHON="${ECHOBOX_PYTHON:-python3}"
 
 read_config() {
     local key="$1" default="$2"
     local val
-    val=$($ECHOBOX_PYTHON "$ECHOBOX_DIR/pipeline/read_config.py" "$CONFIG" "$key" "$default" 2>/dev/null)
+    val=$(
+        "$ECHOBOX_PYTHON" - "$CONFIG" "$key" "$default" <<'PY' 2>/dev/null
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(sys.argv[1]).parent.parent))
+from pipeline.read_config import read_value
+
+print(read_value(Path(sys.argv[1]), sys.argv[2], sys.argv[3]), end="")
+PY
+    )
     echo "${val:-$default}"
 }
 
@@ -146,7 +156,7 @@ if [ -n "$WORKSTATION" ]; then
 elif curl -sf "$MLX_MODELS_URL" >/dev/null 2>&1; then
     $ECHOBOX_PYTHON "$ECHOBOX_DIR/pipeline/enrich.py" "$TRANSCRIPT_FILE" -o "$ENRICHMENT" || {
         echo "      LLM enrichment failed — using raw transcript"
-        echo "      To retry: ./echobox.sh enrich $TRANSCRIPT_FILE"
+        echo "      To retry: ./echobox enrich $TRANSCRIPT_FILE"
         cp "$TRANSCRIPT_FILE" "$ENRICHMENT"
         ENRICHMENT_STATUS="raw"
     }
@@ -155,7 +165,7 @@ else
     echo "      LLM server not running at $MLX_URL"
     echo "      Using raw transcript. To enrich later:"
     echo "        1. Start your LLM server"
-    echo "        2. Run: ./echobox.sh enrich $TRANSCRIPT_FILE"
+    echo "        2. Run: ./echobox enrich $TRANSCRIPT_FILE"
     cp "$TRANSCRIPT_FILE" "$ENRICHMENT"
     ENRICHMENT_STATUS="raw"
 fi
@@ -199,11 +209,11 @@ fi
 echo ""
 echo "Pipeline complete for $TRANSCRIPT_ID"
 echo "  Enrichment: $ENRICHMENT_STATUS"
-echo "  View: ./echobox.sh list"
+echo "  View: ./echobox list"
 if [ "$ENRICHMENT_STATUS" = "raw" ]; then
-    echo "  Re-enrich: ./echobox.sh enrich $TRANSCRIPT_FILE"
+    echo "  Re-enrich: ./echobox enrich $TRANSCRIPT_FILE"
 fi
-echo "  Open report: ./echobox.sh open"
+echo "  Open report: ./echobox open"
 
 REPORT_SLUG=$(echo "${TRANSCRIPT_ID}-enriched" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g')
 REPORT_FILE="$REPORT_DIR/$REPORT_SLUG/report.html"

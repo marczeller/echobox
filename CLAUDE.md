@@ -7,10 +7,10 @@ Echobox records calls, transcribes them locally, diarizes speakers, enriches the
 ## 30-Second Mental Model
 
 - `./install.sh` checks dependencies, creates `config/echobox.yaml`, creates `~/echobox-data/*`, and writes an optional launchd service file.
-- `./echobox.sh status` is the fastest way to see what is missing.
-- `./echobox.sh fit` writes recommended `whisper_model` and `mlx_model` values into `config/echobox.yaml`.
-- `./echobox.sh demo` exercises the enrichment flow without requiring a running LLM server.
-- `./echobox.sh watch` is the real automatic pipeline entrypoint on macOS only.
+- `./echobox status` is the fastest way to see what is missing.
+- `./echobox fit` writes recommended `whisper_model` and `mlx_model` values into `config/echobox.yaml`.
+- `./echobox demo` exercises the enrichment flow without requiring a running LLM server.
+- `./echobox watch` is the real automatic pipeline entrypoint on macOS only.
 - Publishing has two separate knobs:
   - `publish.engine`: `local` or `claude` for HTML generation.
   - `publish.platform`: `local` or `vercel` for where the report is published.
@@ -20,22 +20,22 @@ Echobox records calls, transcribes them locally, diarizes speakers, enriches the
 If a user says "set up Echobox on my machine", follow this order:
 
 1. Run `./install.sh`.
-2. Run `./echobox.sh status`.
+2. Run `./echobox status`.
 3. Edit `config/echobox.yaml` directly.
-4. Run `./echobox.sh fit`.
+4. Run `./echobox fit`.
 5. Start the local LLM server that matches `mlx_url`.
-6. Run `./echobox.sh demo`.
-7. Manually apply the `trnscrb` patch instructions in `patches/README.md`, then run `./echobox.sh watch`.
+6. Run `./echobox demo`.
+7. Manually apply the `trnscrb` patch instructions in `patches/README.md`, then run `./echobox watch`.
 
 Important:
 
-- `./install.sh` already creates `config/echobox.yaml`. If you run `./echobox.sh setup` after `./install.sh`, the wizard exits early because the config already exists.
-- Use `./echobox.sh setup` only when the user wants the minimal interactive wizard and either has no config yet or is willing to delete `config/echobox.yaml` first.
+- `./install.sh` already creates `config/echobox.yaml`. If you run `./echobox setup` after `./install.sh`, the wizard exits early because the config already exists.
+- Use `./echobox setup` only when the user wants the minimal interactive wizard and either has no config yet or is willing to delete `config/echobox.yaml` first.
 - The files in `patches/*.diff` are not guaranteed to be applicable unified diffs. They are patch instructions for manual changes to the installed `trnscrb` source.
 
 ## Command Surface
 
-These are the commands exposed by `./echobox.sh` today:
+These are the commands exposed by `./echobox` today:
 
 | Command | Purpose |
 |---------|---------|
@@ -88,17 +88,17 @@ If a user says "change the model", do this exactly:
 2. If they are also changing backend details, keep `mlx_url` on the MLX server endpoint:
    - MLX server: `http://localhost:8090/v1/chat/completions`
 3. Restart or reconfigure the serving process so that model is actually loaded.
-4. Run `./echobox.sh status` to verify the endpoint is reachable.
+4. Run `./echobox status` to verify the endpoint is reachable.
 
-If they mean transcription quality or speed rather than enrichment quality, edit `whisper_model` instead, or run `./echobox.sh fit` to rewrite both recommended model fields.
+If they mean transcription quality or speed rather than enrichment quality, edit `whisper_model` instead, or run `./echobox fit` to rewrite both recommended model fields.
 
 ## Diagnose A Broken Pipeline
 
 If a user says "my pipeline isn't working", start with this sequence:
 
-1. Run `./echobox.sh status`.
-2. Run `./echobox.sh config` to confirm parsed values.
-3. Run `./echobox.sh demo` to separate prompt and report logic from live recording issues.
+1. Run `./echobox status`.
+2. Run `./echobox config` to confirm parsed values.
+3. Run `./echobox demo` to separate prompt and report logic from live recording issues.
 4. Check logs in `~/echobox-data/logs/`:
    - `watcher.log`
    - `pipeline.log`
@@ -116,7 +116,7 @@ Fast symptom mapping:
 
 ```text
 echobox/
-  echobox.sh                       Main CLI entrypoint
+  echobox                       Main CLI entrypoint
   install.sh                       Installer and bootstrapper
   README.md                        Human-facing overview
   AGENTS.md / CLAUDE.md            Agent-facing setup and operational guidance

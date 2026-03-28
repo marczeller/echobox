@@ -7,14 +7,14 @@ Echobox is an early-stage project. Contributions are welcome.
 ```bash
 git clone https://github.com/marczeller/echobox.git && cd echobox
 ./install.sh
-./echobox.sh test
+./echobox test
 ```
 
 ## Making Changes
 
 1. Fork the repo and create a branch
 2. Make your changes
-3. Run `./echobox.sh test` — all tests must pass
+3. Run `./echobox test` — all tests must pass
 4. Submit a pull request with a clear description
 
 ## Guidelines
@@ -30,5 +30,5 @@ git clone https://github.com/marczeller/echobox.git && cd echobox
 Open an issue on GitHub with:
 - What you expected to happen
 - What actually happened
-- Output of `./echobox.sh status`
+- Output of `./echobox status`
 - macOS version and chip (M1/M2/M3/M4)
