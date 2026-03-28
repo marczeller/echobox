@@ -29,7 +29,12 @@ DEFAULT_PROMPT_TEMPLATE = """You are analyzing a meeting transcript for a projec
 
 {{curated_context}}
 
-Now analyze this transcript. Use the known_attendees and meeting_type to correctly identify speakers.
+Now analyze this transcript. Use the provided context to improve your analysis:
+- Use known_attendees and meeting_type to identify speakers
+- Use calendar_event details to understand the meeting purpose and verify attendees
+- Use document_context and message_context to ground your analysis in prior knowledge
+- Use prior_meeting summaries to provide continuity (reference what was discussed before)
+- Use web_context to identify external attendees you don't recognize
 
 <transcript>
 {{transcript}}
@@ -617,6 +622,24 @@ def fetch_context_by_type(
                             sections.append(f"<document_context query=\"{term}\">\n{result[:2000]}\n</document_context>")
 
     sections.extend(_fetch_messages(config, workstation, attendee_list, allowed))
+
+    if transcript_text and "messages" in allowed:
+        msg_enabled = get_config(config, "context_sources.messages.enabled", "false")
+        if msg_enabled == "true":
+            topic_terms = _extract_key_terms(transcript_text, max_terms=3)
+            event_title = event.get("summary", "") if event else ""
+            if event_title:
+                topic_terms.insert(0, _sanitize_context_term(event_title))
+            for term in topic_terms[:2]:
+                if not term:
+                    continue
+                cmd = _build_command(config, "context_sources.messages", {"term": term})
+                if cmd:
+                    result = run_command(cmd, workstation, timeout=10)
+                    if result and result.strip() and len(result.strip()) > 20:
+                        sections.append(
+                            f'<message_context query="{term}" type="topic">\n{result[:2000]}\n</message_context>'
+                        )
 
     sections.extend(_fetch_web(config, workstation, attendee_list, allowed))
 
