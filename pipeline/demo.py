@@ -85,7 +85,7 @@ def main() -> int:
         matched = {}
 
     print("\n[3/5] Classifying meeting type...")
-    known_emails, internal_domains, team_roles = load_team_config(config)
+    known_emails, internal_domains, team_roles, team_members = load_team_config(config)
     attendee_list = map_attendees(matched, known_emails)
     meeting_types = load_meeting_types(config)
     classification = (
@@ -97,7 +97,7 @@ def main() -> int:
         print(f"      Pattern: {classification['matched_pattern']}")
 
     print("\n[4/5] Building enrichment prompt...")
-    attendees_block = build_attendees_block(attendee_list, team_roles)
+    attendees_block = build_attendees_block(attendee_list, team_roles, fallback_names=team_members)
     prompt = build_prompt(transcript_text, attendees_block, classification, "")
     print(f"      Prompt length: {len(prompt)} characters")
     print(f"      Attendees in prompt: {len(attendee_list)}")

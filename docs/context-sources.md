@@ -28,6 +28,21 @@ context_sources:
     command: "your-calendar-cli events list --date {date} --format json"
 ```
 
+If the CLI needs nested JSON or shell-sensitive quoting, prefer `command_args` so Echobox can execute it without going through shell parsing:
+
+```yaml
+context_sources:
+  calendar:
+    enabled: true
+    command_args:
+      - gws
+      - calendar
+      - events
+      - list
+      - --params
+      - '{"calendarId":"primary","timeMin":"{date}T00:00:00Z","timeMax":"{date}T23:59:59Z","singleEvents":true,"orderBy":"startTime"}'
+```
+
 The command must return JSON with an `items` array containing event objects. Each event should have:
 - `summary` — event title
 - `start.dateTime` — start time in ISO format
@@ -38,7 +53,7 @@ The command must return JSON with an `items` array containing event objects. Eac
 | Tool | Command Example |
 |------|----------------|
 | gcalcli | `gcalcli agenda {date} {date} --details all --output json` |
-| gws | `gws calendar events list --params '{"calendarId":"primary","timeMin":"{date}T00:00:00Z","timeMax":"{date}T23:59:59Z"}'` |
+| gws | `command_args: [gws, calendar, events, list, --params, '{"calendarId":"primary","timeMin":"{date}T00:00:00Z","timeMax":"{date}T23:59:59Z"}']` |
 | icalBuddy | Requires a wrapper script to convert to JSON |
 
 ## Messages
@@ -131,5 +146,6 @@ To add a new context source type:
 4. `{date}` is replaced with the transcript date (YYYY-MM-DD)
 5. `{query}` is replaced with a URL-encoded search string
 6. Output is included in the LLM prompt as-is (truncated to 3000 chars per source)
+7. `command_args` is safer than `command` for CLIs that require nested quotes or JSON payloads
 
 See `config/context-sources.example.yaml` for more examples.

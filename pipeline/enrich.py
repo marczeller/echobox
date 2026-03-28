@@ -11,6 +11,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -109,6 +110,9 @@ def load_config(config_path: Path) -> dict:
                 _flatten(v, key)
         elif isinstance(obj, list):
             config[prefix] = ",".join(str(item) for item in obj)
+            for idx, item in enumerate(obj):
+                item_key = f"{prefix}.{idx}" if prefix else str(idx)
+                _flatten(item, item_key)
         elif isinstance(obj, bool):
             config[prefix] = "true" if obj else "false"
         elif obj is not None:
@@ -125,12 +129,43 @@ def get_config(config: dict, key: str, default: str = "") -> str:
     return os.environ.get(env_key, config.get(key, default))
 
 
-def ssh_run(target: str, cmd: str, timeout: int = 15) -> str:
+def get_config_list(config: dict, key: str) -> list[str]:
+    values: list[tuple[int, str]] = []
+    prefix = f"{key}."
+    for config_key, value in config.items():
+        if not config_key.startswith(prefix):
+            continue
+        suffix = config_key[len(prefix):]
+        if suffix.isdigit():
+            values.append((int(suffix), value))
+    return [value for _, value in sorted(values)]
+
+
+def _substitute_placeholders(value: str, substitutions: dict[str, str]) -> str:
+    rendered = value
+    for key, replacement in substitutions.items():
+        rendered = rendered.replace(f"{{{key}}}", replacement)
+    return rendered
+
+
+def _build_command(config: dict, key_prefix: str, substitutions: dict[str, str]) -> str | list[str]:
+    command_args = get_config_list(config, f"{key_prefix}.command_args")
+    if command_args:
+        return [_substitute_placeholders(arg, substitutions) for arg in command_args]
+
+    command = get_config(config, f"{key_prefix}.command", "")
+    if not command:
+        return ""
+    return _substitute_placeholders(command, substitutions)
+
+
+def ssh_run(target: str, cmd: str | list[str], timeout: int = 15) -> str:
     if not target:
         return ""
+    remote_cmd = " ".join(shlex.quote(part) for part in cmd) if isinstance(cmd, list) else cmd
     try:
         r = subprocess.run(
-            ["ssh"] + SSH_OPTS + [target, cmd],
+            ["ssh"] + SSH_OPTS + [target, remote_cmd],
             capture_output=True, text=True, timeout=timeout
         )
         return r.stdout.strip()
@@ -138,17 +173,20 @@ def ssh_run(target: str, cmd: str, timeout: int = 15) -> str:
         return ""
 
 
-def local_run(cmd: str, timeout: int = 15) -> str:
+def local_run(cmd: str | list[str], timeout: int = 15) -> str:
     try:
-        r = subprocess.run(
-            cmd, shell=True, capture_output=True, text=True, timeout=timeout
-        )
+        if isinstance(cmd, list):
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        else:
+            r = subprocess.run(
+                ["zsh", "-lc", cmd], capture_output=True, text=True, timeout=timeout
+            )
         return r.stdout.strip()
     except Exception:
         return ""
 
 
-def run_command(cmd: str, workstation: str = "", timeout: int = 15) -> str:
+def run_command(cmd: str | list[str], workstation: str = "", timeout: int = 15) -> str:
     if workstation:
         return ssh_run(workstation, cmd, timeout)
     return local_run(cmd, timeout)
@@ -179,17 +217,41 @@ def parse_transcript_metadata(transcript_path: Path, transcript_text: str) -> di
     return meta
 
 
+def prepare_transcript_for_prompt(transcript_text: str) -> str:
+    labels = []
+    for line in transcript_text.splitlines():
+        match = re.match(r"^\[(?:\d{2}:)?\d{2}:\d{2}\]\s+([^:]+):", line.strip())
+        if match:
+            labels.append(match.group(1).strip())
+
+    unique_labels = {label for label in labels if label}
+    if unique_labels and unique_labels != {"[Unknown]"} and unique_labels != {"Unknown"}:
+        return transcript_text
+
+    note = (
+        "Note: this transcript has no usable diarization. Speaker labels are missing or all marked "
+        "as [Unknown]. Treat it as an unlabeled multi-speaker transcript and do not over-claim "
+        "speaker identity from turn boundaries alone.\n\n"
+    )
+    return note + transcript_text
+
+
 def get_calendar_context(config: dict, workstation: str, transcript_date: str) -> list:
-    cal_cmd = get_config(config, "context_sources.calendar.command", "")
-    if not cal_cmd:
+    cmd = _build_command(
+        config,
+        "context_sources.calendar",
+        {"date": transcript_date},
+    )
+    if not cmd:
         return []
 
-    cmd = cal_cmd.replace("{date}", transcript_date)
     raw = run_command(cmd, workstation, timeout=20)
     if not raw:
         return []
     try:
         data = json.loads(raw)
+        if isinstance(data, list):
+            return data
         return data.get("items", [])
     except json.JSONDecodeError:
         return []
@@ -225,11 +287,14 @@ def load_team_config(config: dict) -> tuple:
     known_emails = {}
     internal_domains = set()
     team_roles = {}
+    team_members = set()
 
     for key, val in config.items():
         if key.startswith("team.members."):
             email = key.split(".", 2)[2]
             known_emails[email] = val
+            if val:
+                team_members.add(val)
         elif key == "team.internal_domains":
             for domain in val.split(","):
                 d = domain.strip()
@@ -241,7 +306,7 @@ def load_team_config(config: dict) -> tuple:
             name = key.split(".", 2)[2]
             team_roles[name] = val
 
-    return known_emails, internal_domains, team_roles
+    return known_emails, internal_domains, team_roles, sorted(team_members)
 
 
 def map_attendees(event: dict, known_emails: dict) -> list:
@@ -333,14 +398,17 @@ def _fetch_documents(config, workstation, event, allowed_sources):
     doc_enabled = get_config(config, "context_sources.documents.enabled", "false")
     if doc_enabled != "true":
         return []
-    doc_cmd = get_config(config, "context_sources.documents.command", "")
-    if not doc_cmd:
-        return []
     summary = event.get("summary", "")
     if not summary:
         return []
     safe_summary = _sanitize_context_term(summary)
-    cmd = doc_cmd.replace("{term}", safe_summary)
+    cmd = _build_command(
+        config,
+        "context_sources.documents",
+        {"term": safe_summary},
+    )
+    if not cmd:
+        return []
     result = run_command(cmd, workstation, timeout=10)
     if result:
         return [f"<document_context>\n{result[:3000]}\n</document_context>"]
@@ -362,13 +430,20 @@ def _fetch_messages(config, workstation, attendee_list, allowed_sources):
         return []
 
     if msg_type == "command":
-        msg_cmd = get_config(config, "context_sources.messages.command", "")
-        if not msg_cmd:
+        if not (
+            get_config(config, "context_sources.messages.command", "")
+            or get_config_list(config, "context_sources.messages.command_args")
+        ):
             return []
         sections = []
         for term in external_attendees[:3]:
             safe_term = _sanitize_context_term(term, allow_at=True)
-            result = run_command(msg_cmd.replace("{term}", safe_term), workstation, timeout=10)
+            cmd = _build_command(
+                config,
+                "context_sources.messages",
+                {"term": safe_term},
+            )
+            result = run_command(cmd, workstation, timeout=10)
             if result and result.strip():
                 sections.append(
                     f'<message_context query="{term}">\n{result[:3000]}\n</message_context>'
@@ -413,7 +488,10 @@ def _fetch_web(config, workstation, attendee_list, allowed_sources):
     web_enabled = get_config(config, "context_sources.web.enabled", "false")
     if web_enabled != "true":
         return []
-    web_cmd = get_config(config, "context_sources.web.command", "")
+    has_web_command = (
+        bool(get_config(config, "context_sources.web.command", ""))
+        or bool(get_config_list(config, "context_sources.web.command_args"))
+    )
     sections = []
     unknown_external = [
         att for att in attendee_list if "@" in att.get("email", "")
@@ -423,8 +501,12 @@ def _fetch_web(config, workstation, attendee_list, allowed_sources):
         safe_name = _sanitize_context_term(name)
         from urllib.parse import quote_plus
         query = quote_plus(safe_name)
-        if web_cmd:
-            cmd = web_cmd.replace("{query}", query)
+        if has_web_command:
+            cmd = _build_command(
+                config,
+                "context_sources.web",
+                {"query": query},
+            )
             result = run_command(cmd, workstation, timeout=8)
         else:
             result = run_command(
@@ -451,10 +533,18 @@ def fetch_context_by_type(
     return "\n\n".join(sections)
 
 
-def build_attendees_block(attendee_list: list, team_roles: dict) -> str:
+def build_attendees_block(
+    attendee_list: list,
+    team_roles: dict,
+    fallback_names: list[str] | None = None,
+) -> str:
     lines = []
+    seen = set()
     for att in attendee_list:
         name = att["name"]
+        if name in seen:
+            continue
+        seen.add(name)
         role = team_roles.get(name, "")
         if role:
             lines.append(f"{name} ({role})")
@@ -462,7 +552,20 @@ def build_attendees_block(attendee_list: list, team_roles: dict) -> str:
             lines.append(f"{name} ({att['email']})")
 
     if not lines:
-        lines = [f"{n} ({r})" for n, r in team_roles.items()]
+        for name in fallback_names or []:
+            if name in seen:
+                continue
+            seen.add(name)
+            role = team_roles.get(name, "")
+            lines.append(f"{name} ({role or 'team member'})")
+        for name, role in team_roles.items():
+            if name in seen:
+                continue
+            seen.add(name)
+            lines.append(f"{name} ({role})")
+
+    if not lines:
+        lines = ["Unknown attendees (calendar match unavailable)"]
 
     return "<known_attendees>\n" + "\n".join(lines) + "\n</known_attendees>"
 
@@ -585,6 +688,7 @@ def extract_structured_data(enrichment_md: str, meta: dict, classification: dict
 def call_mlx(prompt: str, config: dict, logger: StepLogger | None = None) -> str:
     url = get_config(config, "mlx_url", "http://localhost:8090/v1/chat/completions")
     model = get_config(config, "mlx_model", "mlx-community/Qwen3-Next-80B-A3B-Instruct-6bit")
+    timeout = int(get_config(config, "mlx_timeout_seconds", "600") or "600")
 
     if logger:
         logger.emit(f"Calling LLM ({len(prompt)} char prompt)...")
@@ -607,7 +711,7 @@ def call_mlx(prompt: str, config: dict, logger: StepLogger | None = None) -> str
     )
     t0 = time.time()
     try:
-        with urllib.request.urlopen(req, timeout=300) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             result = json.loads(resp.read())
             elapsed = time.time() - t0
             content = result["choices"][0]["message"]["content"]
@@ -618,7 +722,10 @@ def call_mlx(prompt: str, config: dict, logger: StepLogger | None = None) -> str
             return content
     except Exception as e:
         elapsed = time.time() - t0
-        print(f"LLM enrichment failed after {elapsed:.1f}s: {e}", file=sys.stderr)
+        print(
+            f"LLM enrichment failed after {elapsed:.1f}s: {e} (timeout={timeout}s)",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
 
@@ -665,6 +772,7 @@ def main():
             sys.exit(1)
 
     transcript_text = transcript_path.read_text()
+    prepared_transcript_text = prepare_transcript_for_prompt(transcript_text)
 
     logger.emit("Parsing transcript metadata...")
     meta = parse_transcript_metadata(transcript_path, transcript_text)
@@ -677,7 +785,7 @@ def main():
 
     matched_event = timestamp_match(events, meta["time"]) if events else {}
 
-    known_emails, internal_domains, team_roles = load_team_config(config)
+    known_emails, internal_domains, team_roles, team_members = load_team_config(config)
     attendee_list = map_attendees(matched_event, known_emails) if matched_event else []
     meeting_types = load_meeting_types(config)
 
@@ -688,7 +796,11 @@ def main():
         else {"meeting_type": "general", "matched_pattern": None}
     )
 
-    attendees_block = build_attendees_block(attendee_list, team_roles)
+    attendees_block = build_attendees_block(
+        attendee_list,
+        team_roles,
+        fallback_names=team_members,
+    )
 
     logger.emit("Curating context...")
     curated_context = fetch_context_by_type(
@@ -698,7 +810,7 @@ def main():
     try:
         template_text = load_prompt_template(config)
         prompt = build_prompt(
-            transcript_text,
+            prepared_transcript_text,
             attendees_block,
             classification,
             curated_context,

@@ -22,6 +22,7 @@ __pycache__/
 .claude/
 .codex/
 .cursor/
+.playwright-mcp/
 
 # Internal planning artifacts
 docs/superpowers/

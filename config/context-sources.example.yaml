@@ -22,9 +22,13 @@ calendar_gcalcli:
 # --- Google Calendar via gws CLI ---
 calendar_gws:
   enabled: true
-  command: >
-    gws calendar events list
-    --params '{"calendarId":"primary","timeMin":"{date}T00:00:00Z","timeMax":"{date}T23:59:59Z","singleEvents":true,"orderBy":"startTime"}'
+  command_args:
+    - gws
+    - calendar
+    - events
+    - list
+    - --params
+    - '{"calendarId":"primary","timeMin":"{date}T00:00:00Z","timeMax":"{date}T23:59:59Z","singleEvents":true,"orderBy":"startTime"}'
 
 # --- Microsoft Outlook via CLI ---
 calendar_outlook:

@@ -19,6 +19,7 @@ except ModuleNotFoundError:
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from pipeline.enrich import (
     parse_transcript_metadata,
+    prepare_transcript_for_prompt,
     timestamp_match,
     classify_call_type,
     load_meeting_types,
@@ -26,6 +27,7 @@ from pipeline.enrich import (
     build_attendees_block,
     build_prompt,
     fetch_context_by_type,
+    get_config_list,
     load_prompt_template,
     render_prompt_template,
     _sanitize_context_term,
@@ -52,6 +54,10 @@ def main():
     meta = parse_transcript_metadata(transcript_path, transcript_text)
     check(meta["date"] == "2026-03-15", f"parsed date: {meta['date']}")
     check(meta["duration"] == "2:34", f"parsed duration: {meta['duration']}")
+    undiarized = prepare_transcript_for_prompt("[00:00] [Unknown]: Hello")
+    check("no usable diarization" in undiarized, "undiarized transcripts get prompt guidance")
+    diarized = prepare_transcript_for_prompt("[00:00] SPEAKER_00: Hello")
+    check("no usable diarization" not in diarized, "diarized transcripts stay unchanged")
 
     calendar = json.loads((FIXTURES / "sample-calendar.json").read_text())
     events = calendar["items"]
@@ -92,6 +98,9 @@ def main():
     block = build_attendees_block(attendees, {})
     check("Alex Chen" in block, "attendees block contains name")
     check("<known_attendees>" in block, "attendees block has XML tags")
+    fallback_block = build_attendees_block([], {"Marc Zeller": "CEO"}, fallback_names=["Marc Zeller", "Chris Ahn"])
+    check("Marc Zeller (CEO)" in fallback_block, "fallback attendees prefer configured roles")
+    check("Chris Ahn (team member)" in fallback_block, "fallback attendees include team members without roles")
 
     command_config = {
         "context_sources.messages.enabled": "true",
@@ -104,6 +113,16 @@ def main():
     check("recent note for Alex Chen" in context, "message command receives attendee term")
     check(_sanitize_context_term("Alice\n; rm -rf /") == "Alice rm -rf", "context terms collapse whitespace and strip shell metacharacters")
     check(_sanitize_context_term("bob@example.com\n&& whoami", allow_at=True) == "bob@example.com whoami", "context term sanitizer preserves email characters but drops shell operators")
+    argv_config = {
+        "context_sources.calendar.command_args.0": "gws",
+        "context_sources.calendar.command_args.1": "calendar",
+        "context_sources.calendar.command_args.2": "events",
+        "context_sources.calendar.command_args.3": "list",
+        "context_sources.calendar.command_args.4": "--params",
+        "context_sources.calendar.command_args.5": '{"calendarId":"primary","timeMin":"{date}T00:00:00Z"}',
+    }
+    calendar_args = get_config_list(argv_config, "context_sources.calendar.command_args")
+    check(calendar_args[0] == "gws" and calendar_args[-1].startswith('{"calendarId"'), "indexed config lists reconstruct command args")
 
     sample_enrichment = (FIXTURES / "2026-03-15_10-00_roadmap-sync-enriched.md").read_text()
     check("## Meeting Summary" in sample_enrichment, "sample enrichment fixture has meeting summary")

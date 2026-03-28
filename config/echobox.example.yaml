@@ -14,6 +14,8 @@ mlx_model: mlx-community/Qwen3-Next-80B-A3B-Instruct-6bit
 mlx_url: http://localhost:8090/v1/chat/completions
 # Start the MLX server before enrichment:
 #   mlx_lm.server --model <model_name> --port 8090
+mlx_timeout_seconds: 600
+# Increase this on slower machines or with larger prompts/models.
 
 # --- Enrichment prompt (optional) ---
 # Leave unset to use the built-in prompt.
@@ -55,6 +57,14 @@ context_sources:
     command: "your-calendar-cli events list --date {date} --format json"
     # Example with Google Calendar CLI:
     # command: "gcalcli agenda {date} {date} --details all --output json"
+    # If your CLI needs fragile nested quoting, prefer command_args:
+    # command_args:
+    #   - gws
+    #   - calendar
+    #   - events
+    #   - list
+    #   - --params
+    #   - '{"calendarId":"primary","timeMin":"{date}T00:00:00Z","timeMax":"{date}T23:59:59Z","singleEvents":true,"orderBy":"startTime"}'
 
   # Message database (Telegram, Slack export, etc.)
   messages:

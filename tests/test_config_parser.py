@@ -46,7 +46,7 @@ def main():
   "log_dir": "~/echobox-data/logs",
   "prompt": {"template": ""},
   "context_sources": {
-    "calendar": {"enabled": true, "command": "calendar {date}"},
+    "calendar": {"enabled": true, "command": "calendar {date}", "command_args": ["calendar", "--date", "{date}"]},
     "messages": {"enabled": false, "type": "sqlite", "path": "", "query": "SELECT * FROM messages"},
     "documents": {"enabled": false, "command": ""},
     "web": {"enabled": true}
@@ -78,6 +78,7 @@ def main():
 
     check("context_sources.calendar.enabled" in config, "nested: context_sources.calendar.enabled")
     check("context_sources.calendar.command" in config, "nested: context_sources.calendar.command")
+    check("context_sources.calendar.command_args.0" in config, "list items are indexed for command_args")
     check("context_sources.messages.enabled" in config, "nested: context_sources.messages.enabled")
     check("context_sources.messages.type" in config, "nested: context_sources.messages.type")
     check("context_sources.messages.path" in config, "nested: context_sources.messages.path")
@@ -97,6 +98,7 @@ def main():
     check("notify.command" in config, "nested: notify.command")
 
     check(config["meeting_types.client_call.context"] == "calendar,messages,documents,web", "list flattened to comma-separated string")
+    check(config["context_sources.calendar.command_args.2"] == "{date}", "command_args placeholder survives flattening")
     check(config["meeting_types.team_sync.internal_only"] == "true", "boolean normalized to true")
     check(config["team.roles.Alex"] == "Lead", "team role flattened correctly")
 
