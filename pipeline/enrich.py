@@ -60,10 +60,11 @@ Each action item must have an owner and a deadline (if mentioned). Format:
 - **[Owner]** Action item description *(by [date] if mentioned)*
 
 ## Follow-ups Needed
+What was discussed but not resolved? Who needs to follow up and on what? If prior_meeting context is available, note whether any follow-ups from previous meetings were addressed in this call.
 What was discussed but not resolved? Who needs to follow up and on what?
 
 ## Context for Next Meeting
-One paragraph: what should the participants prepare or know before the next conversation?
+One paragraph: what should the participants prepare or know before the next conversation? If prior_meeting context is available, reference the trajectory across meetings — what's progressing, what's stalled, what changed.
 """
 
 
