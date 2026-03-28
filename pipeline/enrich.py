@@ -521,15 +521,108 @@ def _fetch_web(config, workstation, attendee_list, allowed_sources):
     return sections
 
 
+def _extract_key_terms(transcript_text: str, max_terms: int = 5) -> list:
+    """Extract key terms from transcript for context search."""
+    words = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b', transcript_text)
+    freq = {}
+    stop = {"The", "This", "That", "What", "When", "Where", "How", "And", "But", "So",
+            "Well", "Yeah", "Yes", "No", "Just", "Like", "Think", "Know", "Mean",
+            "Really", "Actually", "Basically", "Obviously", "Those", "These", "There",
+            "They", "Also", "Because", "Would", "Could", "Should", "People", "Thing",
+            "Things", "Going", "Something", "Someone", "Today", "Tomorrow"}
+    for w in words:
+        if w not in stop and len(w) > 3:
+            freq[w] = freq.get(w, 0) + 1
+    ranked = sorted(freq.items(), key=lambda x: -x[1])
+    return [term for term, count in ranked[:max_terms] if count >= 2]
+
+
+def _fetch_calendar_context(event: dict) -> list:
+    """Inject calendar event details as context for the LLM."""
+    if not event:
+        return []
+    sections = []
+    title = event.get("summary", "")
+    description = event.get("description", "")
+    location = event.get("location", "")
+    parts = []
+    if title:
+        parts.append(f"Title: {title}")
+    if description:
+        parts.append(f"Description: {description[:1000]}")
+    if location:
+        parts.append(f"Location: {location}")
+    attendees = event.get("attendees", [])
+    if attendees:
+        names = [a.get("displayName", a.get("email", "")) for a in attendees]
+        parts.append(f"Attendees: {', '.join(names)}")
+    if parts:
+        sections.append(f"<calendar_event>\n" + "\n".join(parts) + "\n</calendar_event>")
+    return sections
+
+
+def _fetch_prior_meetings(enrichment_dir: str, attendee_list: list, max_results: int = 2) -> list:
+    """Search previous enrichments for context about the same attendees."""
+    if not enrichment_dir or not attendee_list:
+        return []
+    from pathlib import Path
+    edir = Path(os.path.expanduser(enrichment_dir))
+    if not edir.exists():
+        return []
+    names = {att["name"].lower() for att in attendee_list if att.get("name")}
+    sections = []
+    for json_file in sorted(edir.glob("*.json"), reverse=True)[:20]:
+        try:
+            import json as json_mod
+            data = json_mod.loads(json_file.read_text())
+            file_names = {s.get("name", "").lower() for s in data.get("speakers", [])}
+            file_names.update(p.get("name", "").lower() for p in data.get("participants", []))
+            if names & file_names:
+                summary = data.get("summary", "")[:300]
+                if summary:
+                    call_date = data.get("date", "unknown date")
+                    sections.append(
+                        f"<prior_meeting date=\"{call_date}\">\n{summary}\n</prior_meeting>"
+                    )
+                    if len(sections) >= max_results:
+                        break
+        except Exception:
+            continue
+    return sections
+
+
 def fetch_context_by_type(
     config: dict, workstation: str,
-    classification: dict, event: dict, attendee_list: list
+    classification: dict, event: dict, attendee_list: list,
+    transcript_text: str = "",
 ) -> str:
     allowed = _get_allowed_sources(config, classification)
     sections = []
+
+    sections.extend(_fetch_calendar_context(event))
+
     sections.extend(_fetch_documents(config, workstation, event, allowed))
+
+    if transcript_text:
+        key_terms = _extract_key_terms(transcript_text)
+        if key_terms and "documents" in allowed:
+            doc_enabled = get_config(config, "context_sources.documents.enabled", "false")
+            if doc_enabled == "true":
+                for term in key_terms[:3]:
+                    safe_term = _sanitize_context_term(term)
+                    cmd = _build_command(config, "context_sources.documents", {"term": safe_term})
+                    if cmd:
+                        result = run_command(cmd, workstation, timeout=10)
+                        if result and result.strip():
+                            sections.append(f"<document_context query=\"{term}\">\n{result[:2000]}\n</document_context>")
+
     sections.extend(_fetch_messages(config, workstation, attendee_list, allowed))
+
     sections.extend(_fetch_web(config, workstation, attendee_list, allowed))
+
+    enrichment_dir = get_config(config, "enrichment_dir", "~/echobox-data/enrichments")
+    sections.extend(_fetch_prior_meetings(enrichment_dir, attendee_list))
+
     return "\n\n".join(sections)
 
 
@@ -811,7 +904,8 @@ def main():
 
     logger.emit("Curating context...")
     curated_context = fetch_context_by_type(
-        config, workstation, classification, matched_event, attendee_list
+        config, workstation, classification, matched_event, attendee_list,
+        transcript_text=transcript_text,
     )
 
     try:
