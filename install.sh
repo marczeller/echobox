@@ -206,7 +206,9 @@ fi
 
 step "Downloading Whisper large-v3 model"
 
-if [ "$HAS_FASTER_WHISPER" = "true" ]; then
+if [ -z "$PYTHON_CMD" ]; then
+    warn "Skipped — install Python 3.12+ first: brew install python@3.12"
+elif [ "$HAS_FASTER_WHISPER" = "true" ]; then
     WHISPER_MODEL_DIR="$HOME/.cache/huggingface/hub/models--Systran--faster-whisper-large-v3"
     if [ -d "$WHISPER_MODEL_DIR" ]; then
         ok "Whisper large-v3 already downloaded"
@@ -225,10 +227,14 @@ fi
 
 step "Applying patches to trnscrb"
 
-TRNSCRB_SITE_PACKAGES=$(trnscrb --version 2>/dev/null; $PYTHON_CMD -c "
-import trnscrb, pathlib
+TRNSCRB_SITE_PACKAGES=""
+if [ -n "$PYTHON_CMD" ]; then
+    TRNSCRB_SITE_PACKAGES=$($PYTHON_CMD -c "
+import pathlib
+import trnscrb
 print(pathlib.Path(trnscrb.__file__).parent)
 " 2>/dev/null || echo "")
+fi
 
 if [ -n "$TRNSCRB_SITE_PACKAGES" ] && [ -d "$TRNSCRB_SITE_PACKAGES" ]; then
     for patch_desc in "$PATCHES_DIR"/*.diff; do
@@ -242,6 +248,9 @@ if [ -n "$TRNSCRB_SITE_PACKAGES" ] && [ -d "$TRNSCRB_SITE_PACKAGES" ]; then
     echo "    See: $ECHOBOX_DIR/patches/README.md"
 else
     warn "Could not locate trnscrb package directory"
+    if [ -z "$PYTHON_CMD" ]; then
+        echo "    Install Python 3.12+ first so trnscrb can be inspected locally."
+    fi
     echo "    Apply patches manually after installing trnscrb."
 fi
 
@@ -341,8 +350,10 @@ echo -e "  ${GREEN}Completed in ${ELAPSED}s${NC}"
 echo ""
 echo "  Next steps:"
 echo "    1. Edit config/echobox.yaml"
-echo "    2. Run ./echobox fit to find the best models for your hardware"
-echo "    3. Apply trnscrb patches (see patches/README.md)"
-echo "    4. Start: ./echobox watch"
-echo "    5. Or load the launchd service for auto-start"
+echo "    2. Install Python 3.12+: brew install python@3.12"
+echo "    3. Install PyYAML: python3.12 -m pip install --user pyyaml"
+echo "    4. Run ./echobox fit to find the best models for your hardware"
+echo "    5. Apply trnscrb patches (see patches/README.md)"
+echo "    6. Start: ./echobox watch"
+echo "    7. Or load the launchd service for auto-start"
 echo ""
