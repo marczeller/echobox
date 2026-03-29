@@ -98,8 +98,8 @@ def main():
     block = build_attendees_block(attendees, {})
     check("Alex Chen" in block, "attendees block contains name")
     check("<known_attendees>" in block, "attendees block has XML tags")
-    fallback_block = build_attendees_block([], {"Marc Zeller": "CEO"}, fallback_names=["Marc Zeller", "Chris Ahn"])
-    check("Marc Zeller (CEO)" in fallback_block, "fallback attendees prefer configured roles")
+    fallback_block = build_attendees_block([], {"Jane Doe": "CEO"}, fallback_names=["Jane Doe", "Chris Ahn"])
+    check("Jane Doe (CEO)" in fallback_block, "fallback attendees prefer configured roles")
     check("Chris Ahn (team member)" in fallback_block, "fallback attendees include team members without roles")
 
     command_config = {
