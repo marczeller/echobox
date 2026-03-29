@@ -197,7 +197,7 @@ class EchoboxRecorder:
             torch, pipeline_cls = self._import_diarization_dependencies()
             pipeline = pipeline_cls.from_pretrained(
                 "pyannote/speaker-diarization-3.1",
-                use_auth_token=hf_token,
+                token=hf_token,
             )
             pipeline.to(self._diarization_device(torch))
             diarization = pipeline(str(wav_path))
