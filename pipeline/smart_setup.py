@@ -135,10 +135,14 @@ def detect_blackhole() -> bool:
 
 
 def choose_calendar_probe() -> tuple[str, str]:
-    if command_exists("gcalcli"):
-        return "gcalcli", "gcalcli agenda {date} {date} --details all --output json"
     if command_exists("gws"):
-        return "gws", "gws calendar events list --params '{\"calendarId\":\"primary\",\"timeMin\":\"{date}T00:00:00Z\",\"timeMax\":\"{date}T23:59:59Z\"}'"
+        return (
+            "gws",
+            "gws calendar events list --params "
+            "'{\"calendarId\":\"primary\",\"timeMin\":\"{date}T00:00:00Z\",\"timeMax\":\"{date}T23:59:59Z\",\"singleEvents\":true}'",
+        )
+    if command_exists("gcalcli"):
+        return "gcalcli", "gcalcli agenda '{date} 00:00' '{date} 23:59' --details all --tsv"
     if command_exists("icalBuddy"):
         return "icalBuddy", ""
     return "", ""
@@ -259,10 +263,11 @@ def gather_probes(with_calendar: bool, days: int) -> dict[str, object]:
     probes = {
         "system": {"platform": sys.platform, "home": str(Path.home())},
         "commands": {
-            "gcalcli": command_exists("gcalcli"),
             "gws": command_exists("gws"),
+            "gcalcli": command_exists("gcalcli"),
             "icalBuddy": command_exists("icalBuddy"),
             "ffmpeg": command_exists("ffmpeg"),
+            "mdfind": command_exists("mdfind"),
             "sqlite3": command_exists("sqlite3"),
         },
         "modules": {
@@ -315,16 +320,20 @@ def build_recommendations(probes: dict[str, object], calendar_summary: dict[str,
 
     projects = probes["projects"]
     note_dirs = probes["notes"]
-    document_root = os.environ.get("PROJECT_DIR", "").strip()
-    if document_root:
-        context_sources["documents"] = {"enabled": True, "command": "grep -rn '{term}' $PROJECT_DIR --include='*.md' --include='*.txt' -l | head -10 | xargs head -50"}
-        notes.append("PROJECT_DIR is already set, so documents search can use it directly.")
-    elif projects:
-        context_sources["documents"] = {"enabled": True, "command": f"grep -rn '{{term}}' '{projects[0]}' --include='*.md' --include='*.txt' -l | head -10 | xargs head -50"}
-        notes.append(f"Found likely project directories; start documents search from `{projects[0]}`.")
-    elif note_dirs:
-        context_sources["documents"] = {"enabled": True, "command": f"grep -rn '{{term}}' '{note_dirs[0]}' --include='*.md' --include='*.txt' -l | head -10 | xargs head -50"}
-        notes.append(f"No project root detected, but notes directories exist; start documents search from `{note_dirs[0]}`.")
+    if probes["commands"]["mdfind"]:
+        context_sources["documents"] = {"enabled": True, "command": "mdfind '{term}' | head -5 | xargs -I{} head -20 '{}' 2>/dev/null"}
+        notes.append("Spotlight (`mdfind`) is available, so document context can work across Notes, PDFs, and text files without extra setup.")
+    else:
+        document_root = os.environ.get("PROJECT_DIR", "").strip()
+        if document_root:
+            context_sources["documents"] = {"enabled": True, "command": "grep -rn '{term}' $PROJECT_DIR --include='*.md' --include='*.txt' -l | head -10 | xargs head -50"}
+            notes.append("PROJECT_DIR is already set, so documents search can use it directly.")
+        elif projects:
+            context_sources["documents"] = {"enabled": True, "command": f"grep -rn '{{term}}' '{projects[0]}' --include='*.md' --include='*.txt' -l | head -10 | xargs head -50"}
+            notes.append(f"Found likely project directories; start documents search from `{projects[0]}`.")
+        elif note_dirs:
+            context_sources["documents"] = {"enabled": True, "command": f"grep -rn '{{term}}' '{note_dirs[0]}' --include='*.md' --include='*.txt' -l | head -10 | xargs head -50"}
+            notes.append(f"No project root detected, but notes directories exist; start documents search from `{note_dirs[0]}`.")
 
     return {
         "context_sources": context_sources,
@@ -354,7 +363,9 @@ def render_context_sources_yaml(context_sources: dict[str, object]) -> list[str]
     for name, payload in context_sources.items():
         lines.append(f"  {name}:")
         for key, value in payload.items():
-            if isinstance(value, str) and "\n" not in value:
+            if not isinstance(value, str):
+                lines.append(f"    {key}: {yaml_scalar(value)}")
+            elif "\n" not in value:
                 lines.append(f"    {key}: {yaml_scalar(value)}")
             else:
                 lines.append(f"    {key}: >")

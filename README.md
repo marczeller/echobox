@@ -23,7 +23,7 @@ Core processing stays on your machine: transcription, diarization, and enrichmen
 11. **Published** — report saved locally (or deployed to password-gated Vercel)
 12. **Notification** — optional webhook fires with the report URL and meeting summary
 
-Total time from call end to report: **1-3 minutes**. Zero human intervention.
+After setup, the watcher and pipeline can run automatically from call end through report publish. End-to-end time depends heavily on your model choice and hardware.
 
 After the call: `echobox list` to browse, `echobox open` to view the report, `echobox search "topic"` to find past discussions, `echobox actions` to see all outstanding action items across calls.
 
@@ -39,12 +39,12 @@ After the call: `echobox list` to browse, `echobox open` to view the report, `ec
 
 | Area | macOS |
 |------|:-----:|
-| Transcription | Works |
-| Speaker diarization | Works |
-| Local MLX enrichment | Works |
-| Calendar, docs, messages context | Works |
-| Local HTML publishing | Works |
-| Vercel publishing | Works |
+| Transcription | Supported |
+| Speaker diarization | Supported |
+| Local MLX enrichment | Supported |
+| Calendar, docs, messages context | Supported with config |
+| Local HTML publishing | Supported |
+| Vercel publishing | Supported |
 | Auto call detection | Built in |
 
 ## Setup
@@ -59,11 +59,13 @@ git clone https://github.com/marczeller/echobox.git && cd echobox
 ./install.sh
 ```
 
-1. Install dependencies and configure with `./install.sh`; on fresh installs this now runs hardware fit to choose local models
-2. Optionally run `./echobox smart-setup` to probe the machine and draft context-source recommendations
-3. Start your MLX model server
-4. Run `./echobox demo` to verify
-5. Run `./echobox watch` to start recording
+1. Run `./install.sh`; on fresh installs it creates `config/echobox.yaml` and runs hardware fit
+2. Run `./echobox status` to see what is still missing
+3. Optionally run `./echobox smart-setup` to probe the machine and draft context-source recommendations
+4. Review and edit `config/echobox.yaml`
+5. Start your MLX model server
+6. Run `./echobox demo` to verify prompt and report generation
+7. Run `./echobox watch` to start recording
 
 See a [sample report](docs/sample-report.html) generated from the demo fixtures.
 

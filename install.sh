@@ -13,7 +13,7 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 STEP_NUM=0
-TOTAL_STEPS=9
+TOTAL_STEPS=10
 
 ok()   { echo -e "  ${GREEN}[ok]${NC} $1"; }
 warn() { echo -e "  ${YELLOW}[!!]${NC} $1"; }
@@ -111,16 +111,23 @@ fi
 if ! command -v brew &>/dev/null; then
     fail "Homebrew not found — install from https://brew.sh"
     ERRORS=$((ERRORS + 1))
+    HAS_BREW=false
 else
     ok "Homebrew installed"
+    HAS_BREW=true
 fi
 
 step "Checking dependencies"
 
 if ! command -v ffmpeg &>/dev/null; then
-    warn "ffmpeg not found — installing via Homebrew"
-    brew install ffmpeg
-    ok "ffmpeg installed"
+    if [ "$HAS_BREW" = "true" ]; then
+        warn "ffmpeg not found — installing via Homebrew"
+        brew install ffmpeg
+        ok "ffmpeg installed"
+    else
+        fail "ffmpeg not found — install Homebrew first, then run: brew install ffmpeg"
+        ERRORS=$((ERRORS + 1))
+    fi
 else
     ok "ffmpeg $(ffmpeg -version 2>&1 | head -1 | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?')"
 fi

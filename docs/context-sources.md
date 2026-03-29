@@ -52,8 +52,8 @@ The command must return JSON with an `items` array containing event objects. Eac
 
 | Tool | Command Example |
 |------|----------------|
-| gcalcli | `gcalcli agenda {date} {date} --details all --output json` |
-| gws | `command_args: [gws, calendar, events, list, --params, '{"calendarId":"primary","timeMin":"{date}T00:00:00Z","timeMax":"{date}T23:59:59Z"}']` |
+| gws | `command_args: [gws, calendar, events, list, --params, '{"calendarId":"primary","timeMin":"{date}T00:00:00Z","timeMax":"{date}T23:59:59Z","singleEvents":true}']` |
+| gcalcli | `gcalcli agenda "{date} 00:00" "{date} 23:59" --details all --tsv` |
 | icalBuddy | Requires a wrapper script to convert to JSON |
 
 ## Messages
@@ -92,14 +92,16 @@ context_sources:
 
 Search project documents, notes, and knowledge bases for relevant context.
 
+Preferred on macOS because Spotlight is already indexing your files:
+
 ```yaml
 context_sources:
   documents:
     enabled: true
-    command: "grep -rn '{term}' $PROJECT_DIR/docs/ --include='*.md' -l | head -10 | xargs head -50"
+    command: "mdfind '{term}' | head -5 | xargs -I{} head -20 '{}' 2>/dev/null"
 ```
 
-Set `PROJECT_DIR` in your environment to point to your project root.
+If you want to scope document search to a project directory instead, set `PROJECT_DIR` in your environment and use a grep-style command.
 
 ## Web
 

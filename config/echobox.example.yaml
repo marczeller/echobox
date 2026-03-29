@@ -57,7 +57,7 @@ context_sources:
     # The {date} placeholder is replaced with YYYY-MM-DD.
     command: "your-calendar-cli events list --date {date} --format json"
     # Example with Google Calendar CLI:
-    # command: "gcalcli agenda {date} {date} --details all --output json"
+    # command: "gcalcli agenda '{date} 00:00' '{date} 23:59' --details all --tsv"
     # If your CLI needs fragile nested quoting, prefer command_args:
     # command_args:
     #   - gws
@@ -89,8 +89,8 @@ context_sources:
     enabled: false
     # Command that searches your documents. {term} is the search query.
     command: ""
-    # Example with a search tool:
-    # command: "my-search-tool query '{term}' --limit 5"
+    # Good default on macOS:
+    # command: "mdfind '{term}' | head -5 | xargs -I{} head -20 '{}' 2>/dev/null"
 
   # Web search (fallback for unknown attendees/topics)
   web:

@@ -45,8 +45,10 @@ def main():
 
     try:
         write_exec(bin_dir / "system_profiler", "#!/bin/sh\necho 'BlackHole 2ch'\n")
-        write_exec(bin_dir / "gcalcli", "#!/bin/sh\necho '{\"items\": []}'\n")
+        write_exec(bin_dir / "gws", "#!/bin/sh\necho '{\"items\": []}'\n")
+        write_exec(bin_dir / "gcalcli", "#!/bin/sh\necho 'start\\ttitle\\n2026-03-15 10:00\\tRoadmap'\n")
         write_exec(bin_dir / "ffmpeg", "#!/bin/sh\nexit 0\n")
+        write_exec(bin_dir / "mdfind", "#!/bin/sh\necho /tmp/doc.txt\n")
 
         chat_db = messages_dir / "chat.db"
         subprocess.run(["sqlite3", str(chat_db), "CREATE TABLE message (date INTEGER, text TEXT, handle_id INTEGER); CREATE TABLE handle (ROWID INTEGER, id TEXT);"], check=True)
@@ -66,10 +68,13 @@ def main():
         )
         check(result.returncode == 0, f"smart_setup json exits successfully: {result.returncode}")
         payload = json.loads(result.stdout)
-        check(payload["probes"]["calendar_probe"]["tool"] == "gcalcli", "detects gcalcli as calendar tool")
+        check(payload["probes"]["calendar_probe"]["tool"] == "gws", "prefers gws as calendar tool when available")
         check(payload["probes"]["messages"]["exists"], "detects Messages chat.db")
         check(payload["recommendations"]["context_sources"]["messages"]["type"] == "sqlite", "recommends sqlite messages source")
-        check("documents" in payload["recommendations"]["context_sources"], "recommends documents source when project dir exists")
+        check(
+            payload["recommendations"]["context_sources"]["documents"]["command"].startswith("mdfind "),
+            "recommends Spotlight-backed document search when mdfind is available",
+        )
 
         markdown = subprocess.run(
             [sys.executable, "pipeline/smart_setup.py"],
@@ -82,6 +87,7 @@ def main():
         check(markdown.returncode == 0, f"smart_setup markdown exits successfully: {markdown.returncode}")
         check("# Echobox Smart Setup Report" in markdown.stdout, "renders markdown report")
         check("## Suggested Config" in markdown.stdout, "markdown includes suggested config section")
+        check("enabled: true" in markdown.stdout, "markdown yaml renders booleans cleanly")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

@@ -50,7 +50,7 @@ Recommended sequence:
 
 What to probe on macOS:
 
-- Calendar CLIs: `gcalcli`, `gws`, `icalBuddy`
+- Calendar CLIs: `gws`, `gcalcli`, `icalBuddy`
 - Messaging sources: `~/Library/Messages/chat.db`, Slack.app presence, Slack export folders if the user points to them
 - Project context: `PROJECT_DIR`, common project folders, notes directories, Obsidian presence
 - Recording prerequisites: `ffmpeg`, `sounddevice`, BlackHole

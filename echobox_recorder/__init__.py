@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Vendored recording subsystem for Echobox.
 
 Derived from an MIT-licensed upstream recorder and adapted for Echobox:

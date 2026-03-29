@@ -64,9 +64,15 @@ SITE_DIR="$REPORT_DIR/$SLUG"
 TRANSCRIPT_ID=$(echo "$MEETING_NAME" | sed -E 's/-(enriched|raw)$//')
 RAW_FILE="$TRANSCRIPT_DIR/${TRANSCRIPT_ID}.txt"
 if [ ! -f "$RAW_FILE" ]; then
-    echo "Error: matching transcript not found for $ENRICHMENT"
-    echo "Expected: $RAW_FILE"
-    exit 1
+    ALT_RAW_FILE="$(dirname "$ENRICHMENT")/${TRANSCRIPT_ID}.txt"
+    if [ -f "$ALT_RAW_FILE" ]; then
+        RAW_FILE="$ALT_RAW_FILE"
+    else
+        echo "Error: matching transcript not found for $ENRICHMENT"
+        echo "Expected: $RAW_FILE"
+        echo "  Or place ${TRANSCRIPT_ID}.txt next to the enrichment file before publishing."
+        exit 1
+    fi
 fi
 
 mkdir -p "$SITE_DIR/api"

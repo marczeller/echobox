@@ -142,6 +142,28 @@ def run_shell_script(script: Path, *args: str, extra_env: dict[str, str] | None 
     return subprocess.run(["bash", str(script), *args], check=False, env=env).returncode
 
 
+def run_shell_script_capture(
+    script: Path,
+    *args: str,
+    extra_env: dict[str, str] | None = None,
+) -> tuple[int, str, str]:
+    env = os.environ.copy()
+    env.setdefault(
+        "PATH",
+        f"/opt/homebrew/bin:/usr/local/bin:{Path.home()}/bin:{Path.home()}/.local/bin:{env.get('PATH', '')}",
+    )
+    if extra_env:
+        env.update(extra_env)
+    result = subprocess.run(
+        ["bash", str(script), *args],
+        check=False,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode, result.stdout, result.stderr
+
+
 def can_write_directory(path: Path) -> bool:
     path = path.expanduser()
     try:
@@ -319,25 +341,49 @@ def cmd_quality(ctx: AppContext, _args: argparse.Namespace) -> int:
     print("======================")
     print("")
     print("--- Pipeline Check ---")
-    pipeline_rc = run_shell_script(ctx.repo_dir / "quality" / "pipeline-check.sh")
+    pipeline_rc, pipeline_stdout, pipeline_stderr = run_shell_script_capture(
+        ctx.repo_dir / "quality" / "pipeline-check.sh"
+    )
+    if pipeline_stdout.strip():
+        print(pipeline_stdout.rstrip())
+    if pipeline_stderr.strip():
+        print(pipeline_stderr.rstrip(), file=sys.stderr)
     print("")
     print("--- Context Check ---")
-    context_rc = run_shell_script(ctx.repo_dir / "quality" / "context-check.sh")
+    context_rc, context_stdout, context_stderr = run_shell_script_capture(
+        ctx.repo_dir / "quality" / "context-check.sh"
+    )
+    if context_stdout.strip():
+        print(context_stdout.rstrip())
+    if context_stderr.strip():
+        print(context_stderr.rstrip(), file=sys.stderr)
     return 0 if pipeline_rc == 0 and context_rc == 0 else 1
 
 
 def cmd_watch(ctx: AppContext, _args: argparse.Namespace) -> int:
+    watcher_log = ctx.log_dir / "watcher.log"
+    try:
+        watcher_log.parent.mkdir(parents=True, exist_ok=True)
+        with watcher_log.open("a", encoding="utf-8") as log_handle:
+            log_handle.write("Starting built-in Echobox recorder\n")
+    except OSError as exc:
+        print(f"Error: cannot write watcher log: {watcher_log}", file=sys.stderr)
+        print(f"  {exc}", file=sys.stderr)
+        print("  Fix log_dir in config/echobox.yaml or make the directory writable, then retry.", file=sys.stderr)
+        print("  Check: ./echobox status", file=sys.stderr)
+        return 1
     print("Starting Echobox watcher...")
     print(f"Transcripts will be saved to: {ctx.transcript_dir}")
     print("Press Ctrl+C to stop.")
     print("")
-    watcher_log = ctx.log_dir / "watcher.log"
-    watcher_log.parent.mkdir(parents=True, exist_ok=True)
 
     def emit(message: str) -> None:
         print(message)
-        with watcher_log.open("a", encoding="utf-8") as log_handle:
-            log_handle.write(f"{message}\n")
+        try:
+            with watcher_log.open("a", encoding="utf-8") as log_handle:
+                log_handle.write(f"{message}\n")
+        except OSError:
+            pass
 
     def on_meeting_end(transcript_path: Path) -> None:
         emit(f"Meeting ended: {transcript_path.name}")
@@ -353,9 +399,6 @@ def cmd_watch(ctx: AppContext, _args: argparse.Namespace) -> int:
         logger=emit,
     )
     watcher = EchoboxWatcher(recorder, on_meeting_end=on_meeting_end, logger=emit)
-
-    with watcher_log.open("a", encoding="utf-8") as log_handle:
-        log_handle.write("Starting built-in Echobox recorder\n")
     return watcher.run_forever()
 
 
@@ -436,9 +479,25 @@ def cmd_search(ctx: AppContext, args: argparse.Namespace) -> int:
 
 def _try_open(target: str) -> bool:
     if shutil.which("open"):
-        return subprocess.run(["open", target], check=False).returncode == 0
+        return (
+            subprocess.run(
+                ["open", target],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            ).returncode
+            == 0
+        )
     if shutil.which("xdg-open"):
-        return subprocess.run(["xdg-open", target], check=False).returncode == 0
+        return (
+            subprocess.run(
+                ["xdg-open", target],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            ).returncode
+            == 0
+        )
     return False
 
 
@@ -450,8 +509,8 @@ def cmd_open(ctx: AppContext, args: argparse.Namespace) -> int:
             print(f"Opening: {latest}")
             if not _try_open(str(latest)):
                 print(f"  File: {latest}")
-                print("  No browser available. To view the enrichment:")
-                print("    echobox preview")
+                print("  No browser could open the report from this environment.")
+                print("  Use './echobox preview' to inspect the latest enrichment, or open the file manually.")
             return 0
 
         state_path = ctx.state_dir / "last-report-url"

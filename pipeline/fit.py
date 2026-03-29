@@ -43,6 +43,21 @@ def fail(msg):
     print(f"  {RED}[FAIL]{NC} {msg}")
 
 
+def prompt_input(prompt: str, default: str | None = None) -> str:
+    print(prompt, end="", flush=True)
+    try:
+        value = input().strip()
+    except EOFError:
+        message = [
+            "Model fit is interactive and requires a TTY.",
+            "Run './echobox fit --auto' for unattended selection, or re-run './echobox fit' in a terminal.",
+        ]
+        raise EOFError("\n".join(message)) from None
+    if value or default is None:
+        return value
+    return default
+
+
 def read_config_value(config_path: Path, key: str) -> str:
     if not config_path.exists():
         return ""
@@ -452,8 +467,7 @@ def run_mlx_fit(args, hw) -> str | None:
             ok(f"Selected: {best_hf['name']}")
             print()
             return best_hf["name"]
-        print(f"  Use this model? [Y/n] ", end="", flush=True)
-        answer = input().strip().lower()
+        answer = prompt_input("  Use this model? [Y/n] ").lower()
         if answer in ("", "y", "yes"):
             ok(f"Selected: {best_hf['name']}")
             print()
@@ -464,8 +478,7 @@ def run_mlx_fit(args, hw) -> str | None:
         best = running_chat[0]
         print(f"  Active chat model: {best['name']}")
         if not args.auto:
-            print(f"  Use this model? [Y/n] ", end="", flush=True)
-            answer = input().strip().lower()
+            answer = prompt_input("  Use this model? [Y/n] ").lower()
             if answer in ("", "y", "yes"):
                 ok(f"Using: {best['name']}")
                 print()
@@ -480,8 +493,7 @@ def run_mlx_fit(args, hw) -> str | None:
         print(f"  Best cached model: {best['name']} ({best['size_gb']:.0f} GB)")
         print(f"  Not running. Start with: {best['start_cmd']}")
         if not args.auto:
-            print(f"  Use this model? [Y/n] ", end="", flush=True)
-            answer = input().strip().lower()
+            answer = prompt_input("  Use this model? [Y/n] ").lower()
             if answer in ("", "y", "yes"):
                 ok(f"Selected: {best['name']}")
                 print()
@@ -506,8 +518,7 @@ def run_mlx_fit(args, hw) -> str | None:
                 return _fallback_mlx(args, hw)
         else:
             warn("llmfit not found (brew install llmfit)")
-            print("    Install now? [Y/n] ", end="", flush=True)
-            answer = input().strip().lower()
+            answer = prompt_input("    Install now? [Y/n] ").lower()
             if answer in ("", "y", "yes"):
                 if not install_llmfit():
                     warn("Install failed — using fallback recommendations")
@@ -553,8 +564,7 @@ def run_mlx_fit(args, hw) -> str | None:
     if args.auto:
         selected = rec
     else:
-        print(f"  Select [1-{len(top)}] or Enter for recommendation: ", end="", flush=True)
-        choice = input().strip()
+        choice = prompt_input(f"  Select [1-{len(top)}] or Enter for recommendation: ")
         if choice and choice.isdigit() and 1 <= int(choice) <= len(top):
             selected = top[int(choice) - 1]
         else:
@@ -581,8 +591,7 @@ def _fallback_mlx(args, hw) -> str | None:
     print(f"  Fallback recommendation for {mem:.0f} GB: {model}")
 
     if not args.auto:
-        print("  Accept? [Y/n] ", end="", flush=True)
-        answer = input().strip().lower()
+        answer = prompt_input("  Accept? [Y/n] ").lower()
         if answer not in ("", "y", "yes"):
             return None
 
@@ -693,8 +702,7 @@ def run_whisper_fit(args) -> str | None:
         selected = recommended
     else:
         models_str = "/".join(r["model"] for r in results)
-        print(f"  Select [{models_str}] or Enter for recommendation: ", end="", flush=True)
-        choice = input().strip().lower()
+        choice = prompt_input(f"  Select [{models_str}] or Enter for recommendation: ").lower()
         matched = [r for r in results if r["model"] == choice]
         selected = matched[0] if matched else recommended
 
@@ -725,20 +733,26 @@ def main():
 
     config_path = Path(args.config)
 
-    if not args.whisper_only:
-        mlx_model = run_mlx_fit(args, hw)
-        if mlx_model and not args.dry_run:
-            write_config_value(config_path, "mlx_model", mlx_model)
+    try:
+        if not args.whisper_only:
+            mlx_model = run_mlx_fit(args, hw)
+            if mlx_model and not args.dry_run:
+                write_config_value(config_path, "mlx_model", mlx_model)
 
-    if not args.mlx_only:
-        whisper_model = run_whisper_fit(args)
-        if whisper_model and not args.dry_run:
-            write_config_value(config_path, "whisper_model", whisper_model)
+        if not args.mlx_only:
+            whisper_model = run_whisper_fit(args)
+            if whisper_model and not args.dry_run:
+                write_config_value(config_path, "whisper_model", whisper_model)
+    except EOFError as exc:
+        print()
+        fail(str(exc))
+        return 1
 
     if not args.dry_run:
         print()
         ok("Config updated: config/echobox.yaml")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

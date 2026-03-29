@@ -12,6 +12,18 @@ from enrich import load_config
 from fit import write_config_value
 
 
+def prompt(text: str, default: str = "") -> str:
+    try:
+        value = input(text).strip()
+    except EOFError:
+        raise EOFError(
+            "Setup is interactive and requires a TTY.\n"
+            "Run './echobox setup' in a terminal, or create the config directly with:\n"
+            "  cp config/echobox.example.yaml config/echobox.yaml"
+        ) from None
+    return value or default
+
+
 def main() -> int:
     if len(sys.argv) < 3:
         print("Usage: python3 pipeline/setup.py <config> <example_config>")
@@ -45,16 +57,21 @@ def main() -> int:
     print("")
 
     whisper_default = "mlx-community/whisper-large-v3-mlx"
-    whisper_model = input(f"  Whisper model [{whisper_default}]: ").strip() or whisper_default
+    try:
+        whisper_model = prompt(f"  Whisper model [{whisper_default}]: ", whisper_default)
+    except EOFError as exc:
+        config_path.unlink(missing_ok=True)
+        print(exc)
+        return 1
     mlx_url = "http://localhost:8090/v1/chat/completions"
 
     print("")
-    use_vercel = input("  Publish reports to Vercel? [n]: ").strip().lower()
+    use_vercel = prompt("  Publish reports to Vercel? [n]: ").lower()
     publish_platform = "local"
     publish_password = ""
     if use_vercel in {"y", "yes"}:
         publish_platform = "vercel"
-        publish_password = input("  Report password: ").strip()
+        publish_password = prompt("  Report password: ")
 
     write_config_value(config_path, "whisper_model", whisper_model)
     write_config_value(config_path, "mlx_url", mlx_url)

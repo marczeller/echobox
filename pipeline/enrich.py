@@ -242,6 +242,93 @@ def prepare_transcript_for_prompt(transcript_text: str) -> str:
     return note + transcript_text
 
 
+def _coerce_calendar_start(value: str) -> str:
+    text = value.strip()
+    for fmt in (
+        "%Y-%m-%dT%H:%M:%S%z",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d %H:%M:%S",
+        "%m/%d/%Y %H:%M",
+        "%m/%d/%Y %I:%M %p",
+        "%Y-%m-%d",
+    ):
+        try:
+            parsed = datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+        return parsed.isoformat()
+    return text
+
+
+def _parse_calendar_tsv(raw: str) -> list[dict]:
+    rows = [
+        [cell.strip() for cell in line.split("\t")]
+        for line in raw.splitlines()
+        if line.strip()
+    ]
+    if not rows:
+        return []
+
+    header_map: dict[str, int] = {}
+    first = [cell.lower() for cell in rows[0]]
+    if any(token in cell for cell in first for token in ("start", "title", "summary", "attendee", "who", "what")):
+        header_map = {cell.lower(): index for index, cell in enumerate(first)}
+        rows = rows[1:]
+
+    def lookup(*names: str) -> int | None:
+        for name in names:
+            for header, index in header_map.items():
+                if name in header:
+                    return index
+        return None
+
+    start_idx = lookup("start")
+    title_idx = lookup("title", "summary", "what")
+    attendee_idx = lookup("attendee", "who", "guest")
+
+    events: list[dict] = []
+    for row in rows:
+        if len(row) < 2:
+            continue
+        start_raw = row[start_idx] if start_idx is not None and start_idx < len(row) else row[0]
+        if title_idx is not None and title_idx < len(row):
+            summary = row[title_idx]
+        elif len(row) >= 3:
+            summary = row[2]
+        else:
+            summary = row[-1]
+        attendee_raw = row[attendee_idx] if attendee_idx is not None and attendee_idx < len(row) else ""
+        attendees = []
+        for piece in re.split(r"[;,]", attendee_raw):
+            name = piece.strip()
+            if name:
+                attendees.append({"displayName": name, "email": ""})
+        events.append(
+            {
+                "summary": summary,
+                "start": {"dateTime": _coerce_calendar_start(start_raw)},
+                "attendees": attendees,
+            }
+        )
+    return events
+
+
+def parse_calendar_output(raw: str) -> list[dict]:
+    if not raw.strip():
+        return []
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return _parse_calendar_tsv(raw)
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        items = data.get("items", [])
+        return items if isinstance(items, list) else []
+    return []
+
+
 def get_calendar_context(config: dict, workstation: str, transcript_date: str) -> list:
     cmd = _build_command(
         config,
@@ -254,13 +341,7 @@ def get_calendar_context(config: dict, workstation: str, transcript_date: str) -
     raw = run_command(cmd, workstation, timeout=20)
     if not raw:
         return []
-    try:
-        data = json.loads(raw)
-        if isinstance(data, list):
-            return data
-        return data.get("items", [])
-    except json.JSONDecodeError:
-        return []
+    return parse_calendar_output(raw)
 
 
 def timestamp_match(events: list, transcript_time: str) -> dict:

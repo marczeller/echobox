@@ -80,6 +80,23 @@ def main():
         )
         check(missing_publish.returncode != 0, "publish fails when matching transcript is missing")
         check("matching transcript not found" in missing_publish.stdout, "publish emits a clear missing transcript error")
+
+        fixture_dir = tmp / "fixture"
+        fixture_dir.mkdir(parents=True, exist_ok=True)
+        fixture_enrichment = fixture_dir / "2026-03-15_10-00_fixture-enriched.md"
+        fixture_transcript = fixture_dir / "2026-03-15_10-00_fixture.txt"
+        fixture_enrichment.write_text("# Fixture\n\n## Meeting Summary\nTest\n", encoding="utf-8")
+        fixture_transcript.write_text("Date: 2026-03-15\nDuration: 1:00\n", encoding="utf-8")
+        adjacent_publish = subprocess.run(
+            ["bash", "pipeline/publish.sh", str(fixture_enrichment)],
+            cwd=REPO,
+            env={**env, "ECHOBOX_TRANSCRIPT_DIR": str(tmp / "missing-transcripts")},
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        check(adjacent_publish.returncode == 0, f"publish succeeds with adjacent transcript fallback: {adjacent_publish.returncode}")
+        check("Report saved:" in adjacent_publish.stdout, "publish reports the saved output when adjacent transcript exists")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

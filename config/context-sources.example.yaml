@@ -17,7 +17,7 @@
 # --- Google Calendar via gcalcli ---
 calendar_gcalcli:
   enabled: true
-  command: "gcalcli agenda {date} {date} --details all --output json"
+  command: "gcalcli agenda '{date} 00:00' '{date} 23:59' --details all --tsv"
 
 # --- Google Calendar via gws CLI ---
 calendar_gws:

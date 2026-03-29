@@ -29,6 +29,7 @@ from pipeline.enrich import (
     fetch_context_by_type,
     get_config_list,
     load_prompt_template,
+    parse_calendar_output,
     render_prompt_template,
     _sanitize_context_term,
 )
@@ -68,6 +69,11 @@ def main():
 
     no_match = timestamp_match(events, "22:00")
     check(no_match == {}, "no match for distant time")
+    tsv_events = parse_calendar_output(
+        "start\ttitle\tattendees\n2026-03-15 10:00\tQ2 Roadmap Sync\tAlex Chen, Priya Raman\n"
+    )
+    check(tsv_events[0]["summary"] == "Q2 Roadmap Sync", "calendar TSV fallback parses summary")
+    check(tsv_events[0]["attendees"][0]["displayName"] == "Alex Chen", "calendar TSV fallback parses attendees")
 
     config = {
         "meeting_types.client_call.patterns": '["client", "customer"]',

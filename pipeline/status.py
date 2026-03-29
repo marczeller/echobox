@@ -166,6 +166,7 @@ def main() -> int:
         print("  pyannote:       importable")
     else:
         print("  pyannote:       NOT FOUND")
+        ready = False
         issues.append("  - Install pyannote.audio: python3 -m pip install --user pyannote.audio")
         issues.append("    Then accept the model license and set HF_TOKEN")
 
@@ -216,11 +217,11 @@ def main() -> int:
         ("Log", log_dir),
     ):
         if is_writable(path):
-            print(f"  {label}:      writable")
+            print(f"  {label:<12} writable")
         else:
-            print(f"  {label}:      NOT WRITABLE ({path})")
+            print(f"  {label:<12} NOT WRITABLE ({path})")
             ready = False
-            issues.append(f"  - Fix write access for {path}")
+            issues.append(f"  - Fix write access for {path} or update the configured directory")
 
     print("")
     if ready:
@@ -235,7 +236,7 @@ def main() -> int:
     if config_path.exists():
         print("  Status: present")
     else:
-        print("  Status: NOT FOUND — run: echobox setup")
+        print("  Status: NOT FOUND — run: ./install.sh or ./echobox setup")
 
     print("")
     if ready:
