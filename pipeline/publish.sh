@@ -61,10 +61,12 @@ fi
 MEETING_NAME=$(basename "$ENRICHMENT" .md)
 SLUG=$(echo "$MEETING_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g')
 SITE_DIR="$REPORT_DIR/$SLUG"
-TRANSCRIPT_ID=$(echo "$MEETING_NAME" | sed 's/-enriched$//')
+TRANSCRIPT_ID=$(echo "$MEETING_NAME" | sed -E 's/-(enriched|raw)$//')
 RAW_FILE="$TRANSCRIPT_DIR/${TRANSCRIPT_ID}.txt"
 if [ ! -f "$RAW_FILE" ]; then
-    RAW_FILE=$(ls -t "$TRANSCRIPT_DIR"/*.txt 2>/dev/null | head -1)
+    echo "Error: matching transcript not found for $ENRICHMENT"
+    echo "Expected: $RAW_FILE"
+    exit 1
 fi
 
 mkdir -p "$SITE_DIR/api"
@@ -90,7 +92,7 @@ PROMPT_HEADER
     cat "$ENRICHMENT" >> "$PROMPT_FILE"
     echo "" >> "$PROMPT_FILE"
     echo "Raw transcript for Transcript tab:" >> "$PROMPT_FILE"
-    head -200 "$RAW_FILE" >> "$PROMPT_FILE" 2>/dev/null || echo "No transcript available." >> "$PROMPT_FILE"
+    head -200 "$RAW_FILE" >> "$PROMPT_FILE"
 
     CLAUDE_MODEL="${ECHOBOX_CLAUDE_MODEL:-claude-sonnet-4-6}"
     ANTHROPIC_API_KEY="" claude -p --model "$CLAUDE_MODEL" < "$PROMPT_FILE" | sed '/^```/d' > "$SITE_DIR/report.html" 2>/dev/null
@@ -107,7 +109,7 @@ if [ "$GENERATED" = false ]; then
     echo "Generating HTML report (local, no network)..."
     if [ -f "$TEMPLATE" ]; then
         $ECHOBOX_PYTHON "$ECHOBOX_DIR/pipeline/report_render.py" \
-            "$TEMPLATE" "$ENRICHMENT" "${RAW_FILE:-}" "$MEETING_NAME" \
+            "$TEMPLATE" "$ENRICHMENT" "$RAW_FILE" "$MEETING_NAME" \
             > "$SITE_DIR/report.html"
         GENERATED=true
     else
@@ -137,7 +139,7 @@ if [ "$PUBLISH_PLATFORM" = "vercel" ] && command -v vercel &>/dev/null; then
         $ECHOBOX_PYTHON -c "
 import sys
 content = open(sys.argv[1]).read()
-password = sys.argv[2].replace('\\\\', '\\\\\\\\').replace(\"'\", \"\\\\'\")
+password = sys.argv[2].replace('\\', '\\\\').replace(\"'\", \"\\'\")
 print(content.replace('ECHOBOX_DEFAULT_PASSWORD', password))
 " "$GATE_JS" "$PUBLISH_PASSWORD" > "$SITE_DIR/api/gate.js"
     fi

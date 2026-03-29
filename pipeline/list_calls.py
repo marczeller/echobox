@@ -52,13 +52,21 @@ def main() -> int:
     for transcript in transcripts[:60]:
         base = transcript.stem
         enrichment = enrichment_dir / f"{base}-enriched.md"
+        raw_enrichment = enrichment_dir / f"{base}-raw.md"
         sidecar = enrichment_dir / f"{base}-enriched.json"
-        report = report_dir / report_slug_for_name(f"{base}-enriched") / "report.html"
+        report = None
+        for report_name in (f"{base}-enriched", f"{base}-raw"):
+            candidate = report_dir / report_slug_for_name(report_name) / "report.html"
+            if candidate.exists():
+                report = candidate
+                break
 
-        if report.exists():
+        if report is not None and enrichment.exists():
             status = "transcript + enrichment + report"
         elif enrichment.exists():
             status = "transcript + enrichment"
+        elif raw_enrichment.exists():
+            status = "transcript + raw (not enriched)"
         else:
             status = "transcript only"
 
@@ -69,6 +77,8 @@ def main() -> int:
             summary = str(sidecar_data.get("summary") or "")[:60]
         elif enrichment.exists():
             summary = markdown_summary(enrichment)
+        elif raw_enrichment.exists():
+            summary = transcript_summary(raw_enrichment)
         if not summary:
             summary = transcript_summary(transcript)
 

@@ -56,7 +56,17 @@ class TestRecorder(EchoboxRecorder):
         return FakeStream()
 
     def _transcribe_wav(self, wav_path: Path):
-        return {"segments": [{"start": 0, "text": "hello world"}], "text": "hello world"}
+        return {"segments": [{"start": 0, "end": 1.5, "text": "hello world"}], "text": "hello world"}
+
+
+class TestDiarizedRecorder(TestRecorder):
+    def diarize(self, wav_path: Path, segments):
+        labeled = []
+        for segment in segments:
+            updated = dict(segment)
+            updated["speaker"] = "SPEAKER_00"
+            labeled.append(updated)
+        return labeled
 
 
 def main():
@@ -72,7 +82,19 @@ def main():
         wav_path = transcript.with_suffix(".wav")
         check(transcript.exists(), "transcript is written")
         check(wav_path.exists(), "wav is retained")
-        check("[00:00] [Unknown]: hello world" in transcript.read_text(encoding="utf-8"), "transcript contains formatted segment")
+        check(
+            "[00:00] [Unknown]: hello world" in transcript.read_text(encoding="utf-8"),
+            "transcript contains fallback speaker label",
+        )
+
+        diarized = TestDiarizedRecorder(tmp, "demo-model")
+        diarized.start("roadmap")
+        diarized._chunks = [b"\x00\x00" * 1600]
+        diarized_transcript = diarized.stop()
+        check(
+            "[00:00] SPEAKER_00: hello world" in diarized_transcript.read_text(encoding="utf-8"),
+            "transcript contains diarized speaker label",
+        )
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import wave
 from dataclasses import dataclass
@@ -164,6 +165,71 @@ class EchoboxRecorder:
         result = mlx_whisper.transcribe(str(wav_path), path_or_hf_repo=self.whisper_model)
         return result if isinstance(result, dict) else {"text": str(result), "segments": []}
 
+    def _import_diarization_dependencies(self) -> tuple[Any, Any]:
+        try:
+            import torch
+            from pyannote.audio import Pipeline
+        except Exception as exc:
+            raise RuntimeError(
+                "pyannote.audio diarization is unavailable. Install pyannote.audio and torch."
+            ) from exc
+        return torch, Pipeline
+
+    def _diarization_device(self, torch_module: Any):
+        if hasattr(torch_module, "backends") and hasattr(torch_module.backends, "mps"):
+            try:
+                if torch_module.backends.mps.is_available():
+                    return torch_module.device("mps")
+            except Exception:
+                pass
+        return torch_module.device("cpu")
+
+    def diarize(self, wav_path: Path, segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if not segments:
+            return segments
+
+        hf_token = os.environ.get("HF_TOKEN", "").strip()
+        if not hf_token:
+            self.logger("Diarization skipped: HF_TOKEN is not set; using [Unknown] speaker labels")
+            return segments
+
+        try:
+            torch, pipeline_cls = self._import_diarization_dependencies()
+            pipeline = pipeline_cls.from_pretrained(
+                "pyannote/speaker-diarization-3.1",
+                use_auth_token=hf_token,
+            )
+            pipeline.to(self._diarization_device(torch))
+            diarization = pipeline(str(wav_path))
+        except Exception as exc:
+            self.logger(f"Diarization unavailable for {wav_path.name}: {exc}")
+            return segments
+
+        turns: list[tuple[float, float, str]] = []
+        for turn, _track, speaker in diarization.itertracks(yield_label=True):
+            turns.append((float(turn.start), float(turn.end), str(speaker)))
+
+        diarized_segments: list[dict[str, Any]] = []
+        for segment in segments:
+            if not isinstance(segment, dict):
+                diarized_segments.append(segment)
+                continue
+            start = float(segment.get("start", 0) or 0)
+            end = float(segment.get("end", start) or start)
+            if end <= start:
+                end = start + 0.01
+            speaker = "[Unknown]"
+            best_overlap = 0.0
+            for turn_start, turn_end, turn_speaker in turns:
+                overlap = min(end, turn_end) - max(start, turn_start)
+                if overlap > best_overlap:
+                    best_overlap = overlap
+                    speaker = turn_speaker
+            updated_segment = dict(segment)
+            updated_segment["speaker"] = speaker
+            diarized_segments.append(updated_segment)
+        return diarized_segments
+
     def _format_transcript(self, started_at: datetime, duration_seconds: int, result: dict[str, Any]) -> str:
         lines = [
             f"Date: {started_at.date().isoformat()}",
@@ -171,7 +237,8 @@ class EchoboxRecorder:
             f"Duration: {duration_seconds // 60}:{duration_seconds % 60:02d}",
             "",
         ]
-        segments = result.get("segments") or []
+        wav_path = Path(str(result.get("_wav_path") or ""))
+        segments = self.diarize(wav_path, result.get("segments") or [])
         for segment in segments:
             if not isinstance(segment, dict):
                 continue
@@ -179,8 +246,9 @@ class EchoboxRecorder:
             minutes = int(start // 60)
             seconds = int(start % 60)
             text = str(segment.get("text", "")).strip()
+            speaker = str(segment.get("speaker", "[Unknown]") or "[Unknown]")
             if text:
-                lines.append(f"[{minutes:02d}:{seconds:02d}] [Unknown]: {text}")
+                lines.append(f"[{minutes:02d}:{seconds:02d}] {speaker}: {text}")
         if len(lines) == 4:
             text = str(result.get("text", "")).strip()
             if text:
@@ -204,6 +272,8 @@ class EchoboxRecorder:
 
         try:
             result = self._transcribe_wav(session.wav_path)
+            if isinstance(result, dict):
+                result["_wav_path"] = str(session.wav_path)
             transcript_body = self._format_transcript(session.started_at, duration_seconds, result)
         except Exception as exc:
             transcript_body = (

@@ -130,16 +130,29 @@ if [ ! -f "$TRANSCRIPT_FILE" ]; then
 fi
 
 WORKSTATION="${ECHOBOX_WORKSTATION:-$(read_config workstation_ssh '')}"
-ENRICHMENT="$ENRICHMENT_DIR/${TRANSCRIPT_ID}-enriched.md"
+ENRICHED_ENRICHMENT="$ENRICHMENT_DIR/${TRANSCRIPT_ID}-enriched.md"
+RAW_ENRICHMENT="$ENRICHMENT_DIR/${TRANSCRIPT_ID}-raw.md"
+ENRICHMENT="$ENRICHED_ENRICHMENT"
 
 MLX_URL="${ECHOBOX_MLX_URL:-$(read_config mlx_url 'http://localhost:8090/v1/chat/completions')}"
 MLX_MODELS_URL="${MLX_URL%/chat/completions}/models"
 
 ENRICHMENT_STATUS="enriched"
+
+use_raw_transcript() {
+    local reason="$1"
+    echo "      $reason"
+    echo "      To retry: ./echobox enrich $TRANSCRIPT_FILE"
+    rm -f "$ENRICHED_ENRICHMENT" "${ENRICHED_ENRICHMENT%.md}.json"
+    cp "$TRANSCRIPT_FILE" "$RAW_ENRICHMENT"
+    ENRICHMENT="$RAW_ENRICHMENT"
+    ENRICHMENT_STATUS="raw"
+}
+
 echo "[1/4] LLM enrichment with project context..."
 if [ -n "$WORKSTATION" ]; then
     REMOTE_TRANSCRIPT="$(basename "$TRANSCRIPT_FILE" | sed 's/[^a-zA-Z0-9._-]/_/g')"
-    REMOTE_ENRICHMENT="$(basename "$ENRICHMENT" | sed 's/[^a-zA-Z0-9._-]/_/g')"
+    REMOTE_ENRICHMENT="$(basename "$ENRICHED_ENRICHMENT" | sed 's/[^a-zA-Z0-9._-]/_/g')"
     REMOTE_SIDECAR="${REMOTE_ENRICHMENT%.md}.json"
     echo "      Syncing transcript to workstation..."
     rsync -az "$TRANSCRIPT_FILE" "$WORKSTATION:~/echobox-data/transcripts/$REMOTE_TRANSCRIPT"
@@ -147,27 +160,22 @@ if [ -n "$WORKSTATION" ]; then
         "cd ~/echobox && python3 pipeline/enrich.py ~/echobox-data/transcripts/$REMOTE_TRANSCRIPT -o ~/echobox-data/enrichments/$REMOTE_ENRICHMENT"; then
         rsync -az "$WORKSTATION:~/echobox-data/enrichments/$REMOTE_ENRICHMENT" "$ENRICHMENT"
         rsync -az "$WORKSTATION:~/echobox-data/enrichments/$REMOTE_SIDECAR" "${ENRICHMENT%.md}.json" 2>/dev/null || true
+        rm -f "$RAW_ENRICHMENT"
         echo "      Done: $ENRICHMENT"
     else
-        echo "      Workstation enrichment failed — using raw transcript"
-        cp "$TRANSCRIPT_FILE" "$ENRICHMENT"
-        ENRICHMENT_STATUS="raw"
+        use_raw_transcript "Workstation enrichment failed — saving raw transcript as $(basename "$RAW_ENRICHMENT")"
     fi
 elif curl -sf "$MLX_MODELS_URL" >/dev/null 2>&1; then
     $ECHOBOX_PYTHON "$ECHOBOX_DIR/pipeline/enrich.py" "$TRANSCRIPT_FILE" -o "$ENRICHMENT" || {
-        echo "      LLM enrichment failed — using raw transcript"
-        echo "      To retry: ./echobox enrich $TRANSCRIPT_FILE"
-        cp "$TRANSCRIPT_FILE" "$ENRICHMENT"
-        ENRICHMENT_STATUS="raw"
+        use_raw_transcript "LLM enrichment failed — saving raw transcript as $(basename "$RAW_ENRICHMENT")"
     }
+    if [ "$ENRICHMENT_STATUS" = "enriched" ]; then
+        rm -f "$RAW_ENRICHMENT"
+    fi
     echo "      Done: $ENRICHMENT"
 else
     echo "      LLM server not running at $MLX_URL"
-    echo "      Using raw transcript. To enrich later:"
-    echo "        1. Start your LLM server"
-    echo "        2. Run: ./echobox enrich $TRANSCRIPT_FILE"
-    cp "$TRANSCRIPT_FILE" "$ENRICHMENT"
-    ENRICHMENT_STATUS="raw"
+    use_raw_transcript "Saving raw transcript as $(basename "$RAW_ENRICHMENT")"
 fi
 
 if [ -n "$WORKSTATION" ]; then
@@ -215,6 +223,7 @@ if [ "$ENRICHMENT_STATUS" = "raw" ]; then
 fi
 echo "  Open report: ./echobox open"
 
-REPORT_SLUG=$(echo "${TRANSCRIPT_ID}-enriched" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g')
+REPORT_BASENAME="$(basename "$ENRICHMENT" .md)"
+REPORT_SLUG=$(echo "$REPORT_BASENAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g')
 REPORT_FILE="$REPORT_DIR/$REPORT_SLUG/report.html"
 write_pipeline_result "$TRANSCRIPT_ID" "$TRANSCRIPT_FILE" "$ENRICHMENT" "$REPORT_FILE" "$ENRICHMENT_STATUS"
