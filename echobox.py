@@ -600,6 +600,17 @@ def cmd_demo(ctx: AppContext, _args: argparse.Namespace) -> int:
     )
 
 
+def cmd_serve(ctx: AppContext, args: argparse.Namespace) -> int:
+    from pipeline.serve import start_server
+    password = ctx.config.get("publish.password", "")
+    if not password or password == "change-me":
+        print("Error: set publish.password in config/echobox.yaml before serving.", file=sys.stderr)
+        print("  Reports without a real password are publicly readable.", file=sys.stderr)
+        return 1
+    start_server(ctx.report_dir, password, args.port, args.tunnel)
+    return 0
+
+
 def custom_help(version: str) -> str:
     return f"""Echobox {version} - Self-hosted call intelligence pipeline
 
@@ -623,6 +634,7 @@ Pipeline:
   echobox enrich <file>       Run LLM enrichment on a transcript
   echobox publish <file>      Generate HTML report from enrichment
   echobox reprocess <name>    Re-enrich and re-publish a call
+  echobox serve [--tunnel X]  Serve reports with password gate (local/tailscale/bore)
 
 More:
   echobox clean [--older N] [--prune]  Show disk usage and optionally prune old data
@@ -671,6 +683,9 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("test", add_help=False)
     clean_parser = subparsers.add_parser("clean", add_help=False)
     clean_parser.add_argument("clean_args", nargs=argparse.REMAINDER)
+    serve_parser = subparsers.add_parser("serve", add_help=False)
+    serve_parser.add_argument("--port", type=int, default=8090)
+    serve_parser.add_argument("--tunnel", choices=["tailscale", "bore", ""], default="")
     subparsers.add_parser("version", add_help=False)
     subparsers.add_parser("help", add_help=False)
     return parser
@@ -707,6 +722,7 @@ def main(argv: list[str] | None = None) -> int:
         "quality": cmd_quality,
         "reprocess": cmd_reprocess,
         "search": cmd_search,
+        "serve": cmd_serve,
         "setup": cmd_setup,
         "smart-setup": cmd_smart_setup,
         "status": cmd_status,
