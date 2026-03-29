@@ -39,8 +39,16 @@ def main():
         check(paths["REPORT_DIR"] == str(temp_home / "echobox-data" / "reports"), "paths fall back to default report dir when config import fails")
         value = read_config.read_value(Path("/tmp/does-not-matter.yaml"), "mlx_url", "fallback")
         check(value == "fallback", "read_value returns the provided default when config import fails")
+
+        os.environ["ECHOBOX_DATA_DIR"] = "~/custom-echobox"
+        os.environ["ECHOBOX_STATE_DIR"] = "$HOME/custom-state"
+        env_paths = read_config.resolve_paths(Path("/tmp/does-not-matter.yaml"))
+        check(env_paths["DATA_DIR"] == str(temp_home / "custom-echobox"), "ECHOBOX_DATA_DIR expands ~")
+        check(env_paths["STATE_DIR"] == str(temp_home / "custom-state"), "ECHOBOX_STATE_DIR expands environment variables")
     finally:
         read_config.load_config = original
+        os.environ.pop("ECHOBOX_DATA_DIR", None)
+        os.environ.pop("ECHOBOX_STATE_DIR", None)
         if old_home is None:
             os.environ.pop("HOME", None)
         else:

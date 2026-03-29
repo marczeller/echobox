@@ -33,22 +33,21 @@ PY
     echo "${val:-$default}"
 }
 
-expand_path() {
-    local path="$1"
-    if [ -z "$path" ]; then
-        echo ""
-        return
-    fi
-    "$ECHOBOX_PYTHON" -c 'import os, sys; print(os.path.expandvars(os.path.expanduser(sys.argv[1])), end="")' "$path"
-}
-
 resolve_paths() {
-    DATA_DIR="${ECHOBOX_DATA_DIR:-$HOME/echobox-data}"
-    TRANSCRIPT_DIR="$(expand_path "${ECHOBOX_TRANSCRIPT_DIR:-$(read_config 'transcript_dir' "$DATA_DIR/transcripts")}")"
-    ENRICHMENT_DIR="$(expand_path "${ECHOBOX_ENRICHMENT_DIR:-$(read_config 'enrichment_dir' "$DATA_DIR/enrichments")}")"
-    REPORT_DIR="$(expand_path "${ECHOBOX_REPORT_DIR:-$(read_config 'report_dir' "$DATA_DIR/reports")}")"
-    LOG_DIR="$(expand_path "${ECHOBOX_LOG_DIR:-$(read_config 'log_dir' "$DATA_DIR/logs")}")"
-    STATE_DIR="${ECHOBOX_STATE_DIR:-$(dirname "$REPORT_DIR")}"
+    local paths_output key value
+    paths_output=$("$ECHOBOX_PYTHON" "$ECHOBOX_DIR/pipeline/read_config.py" paths "$CONFIG" 2>/dev/null || true)
+    while IFS='=' read -r key value; do
+        [ -n "$key" ] || continue
+        eval "$key=$value"
+    done <<EOF
+$paths_output
+EOF
+    DATA_DIR="${DATA_DIR:-$HOME/echobox-data}"
+    TRANSCRIPT_DIR="${TRANSCRIPT_DIR:-$DATA_DIR/transcripts}"
+    ENRICHMENT_DIR="${ENRICHMENT_DIR:-$DATA_DIR/enrichments}"
+    REPORT_DIR="${REPORT_DIR:-$DATA_DIR/reports}"
+    LOG_DIR="${LOG_DIR:-$DATA_DIR/logs}"
+    STATE_DIR="${STATE_DIR:-$(dirname "$REPORT_DIR")}"
     mkdir -p "$LOG_DIR" "$TRANSCRIPT_DIR" "$ENRICHMENT_DIR" "$REPORT_DIR" "$STATE_DIR"
 }
 

@@ -35,7 +35,7 @@ def expand_path(value: str) -> str:
 
 def resolve_paths(config_path: Path) -> dict[str, str]:
     config = safe_load_config(config_path)
-    data_dir = os.environ.get("ECHOBOX_DATA_DIR", str(Path.home() / "echobox-data"))
+    data_dir = expand_path(os.environ.get("ECHOBOX_DATA_DIR", str(Path.home() / "echobox-data")))
     report_dir = os.environ.get(
         "ECHOBOX_REPORT_DIR",
         expand_path(config.get("report_dir", str(Path(data_dir) / "reports"))),
@@ -55,7 +55,12 @@ def resolve_paths(config_path: Path) -> dict[str, str]:
             "ECHOBOX_LOG_DIR",
             expand_path(config.get("log_dir", str(Path(data_dir) / "logs"))),
         ),
-        "STATE_DIR": os.environ.get("ECHOBOX_STATE_DIR", str(Path(report_dir).parent)),
+        "STATE_DIR": expand_path(
+            os.environ.get(
+                "ECHOBOX_STATE_DIR",
+                config.get("state_dir", str(Path(report_dir).parent)),
+            )
+        ),
     }
     return paths
 

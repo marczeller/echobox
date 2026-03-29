@@ -118,7 +118,7 @@ def main():
     cfg.unlink()
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-        f.write("publish:\n  platform: local\n  password: change-me\n")
+        f.write("publish:\n  platform: local\n  password: \"\"\n")
         f.flush()
         nested_cfg = Path(f.name)
 

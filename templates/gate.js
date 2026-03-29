@@ -6,7 +6,8 @@ const PASSWORD = process.env.ECHOBOX_REPORT_PASSWORD || 'ECHOBOX_DEFAULT_PASSWOR
 const COOKIE_NAME = 'echobox_report';
 const COOKIE_MAX_AGE = 86400 * 7;
 
-const HMAC_SECRET = process.env.ECHOBOX_HMAC_SECRET || crypto.randomBytes(32).toString('hex');
+const HMAC_SECRET = process.env.ECHOBOX_HMAC_SECRET
+    || crypto.createHash('sha256').update(`echobox:${PASSWORD}`).digest('hex');
 
 function makeToken(p) {
     return crypto.createHmac('sha256', HMAC_SECRET).update(p).digest('hex').slice(0, 32);

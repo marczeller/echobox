@@ -259,9 +259,9 @@ def cmd_enrich(ctx: AppContext, args: argparse.Namespace) -> int:
     transcript_id = transcript.stem
     output = ctx.enrichment_dir / f"{transcript_id}-enriched.md"
 
-    print(f"Enriching: {transcript}")
-    print(f"Output:    {output}")
-    print("")
+    print(f"Enriching: {transcript}", flush=True)
+    print(f"Output:    {output}", flush=True)
+    print("", flush=True)
 
     workstation = os.environ.get("ECHOBOX_WORKSTATION", get_config(ctx.config, "workstation_ssh", ""))
     if workstation:
@@ -318,7 +318,7 @@ def cmd_publish(ctx: AppContext, args: argparse.Namespace) -> int:
     if not enrichment.is_file():
         print(f"Error: enrichment not found: {args.enrichment}", file=sys.stderr)
         return 1
-    print(f"Publishing: {enrichment}")
+    print(f"Publishing: {enrichment}", flush=True)
     return run_shell_script(ctx.repo_dir / "pipeline" / "publish.sh", str(enrichment))
 
 
@@ -431,13 +431,13 @@ def cmd_reprocess(ctx: AppContext, args: argparse.Namespace) -> int:
 
     base = transcript.stem
     enrichment = ctx.enrichment_dir / f"{base}-enriched.md"
-    print(f"Reprocessing: {base}")
-    print("")
-    print("[1/2] Enriching...")
+    print(f"Reprocessing: {base}", flush=True)
+    print("", flush=True)
+    print("[1/2] Enriching...", flush=True)
     enrich_rc = cmd_enrich(ctx, argparse.Namespace(transcript=str(transcript), verbose=False))
     if enrich_rc != 0:
         return enrich_rc
-    print("[2/2] Publishing...")
+    print("[2/2] Publishing...", flush=True)
     publish_rc = run_shell_script(ctx.repo_dir / "pipeline" / "publish.sh", str(enrichment))
     if publish_rc != 0:
         return publish_rc

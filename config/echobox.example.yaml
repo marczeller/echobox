@@ -162,8 +162,8 @@ publish:
   # "local" for local HTML files only
   platform: local
 
-  # Password for the Vercel auth gate
-  password: "change-me"
+  # Password for the Vercel auth gate. Leave blank until you deploy.
+  password: ""
 
   # Vercel team scope (required for Vercel deployment)
   scope: ""

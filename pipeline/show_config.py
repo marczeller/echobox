@@ -13,6 +13,17 @@ from enrich import ConfigError
 from enrich import load_config
 
 
+def is_sensitive_key(key: str) -> bool:
+    lowered = key.lower()
+    return any(token in lowered for token in ("password", "token", "secret", "api_key"))
+
+
+def format_config_value(key: str, value: str) -> str:
+    if is_sensitive_key(key):
+        return "(redacted)" if value else "(not set)"
+    return value[:70] + "..." if len(value) > 70 else value
+
+
 def main() -> int:
     config_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("config/echobox.yaml")
 
@@ -38,12 +49,12 @@ def main() -> int:
 
     for key, value in sorted(config.items()):
         section = key.split(".", 1)[0] if "." in key else "_top"
-        display_value = value[:70] + "..." if len(value) > 70 else value
+        display_value = format_config_value(key, value)
         flag = ""
 
-        if key == "publish.password" and value in ("change-me", ""):
-            flag = "  ← change this!"
-            warnings.append("publish.password is still the default")
+        if key == "publish.password" and value == "":
+            flag = "  ← not set"
+            warnings.append("publish.password is not set")
         elif value == "" and key not in ("workstation_ssh", "publish.scope", "notify.command"):
             flag = "  ← not set"
 

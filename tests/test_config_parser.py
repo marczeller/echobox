@@ -56,7 +56,7 @@ def main():
     "team_sync": {"patterns": ["sync", "weekly"], "internal_only": true, "context": ["documents"]},
     "general": {"patterns": [], "context": ["calendar", "web"]}
   },
-  "publish": {"platform": "local", "password": "change-me", "scope": ""},
+  "publish": {"platform": "local", "password": "", "scope": ""},
   "notify": {"enabled": false, "command": ""},
   "team": {"members": {"alex@example.com": "Alex"}, "internal_domains": ["company.com"], "roles": {"Alex": "Lead"}}
 }

@@ -33,20 +33,19 @@ PY
     echo "${val:-$default}"
 }
 
-expand_path() {
-    local path="$1"
-    if [ -z "$path" ]; then
-        echo ""
-        return
-    fi
-    "$ECHOBOX_PYTHON" -c 'import os, sys; print(os.path.expandvars(os.path.expanduser(sys.argv[1])), end="")' "$path"
-}
-
 resolve_paths() {
-    DATA_DIR="${ECHOBOX_DATA_DIR:-$HOME/echobox-data}"
-    TRANSCRIPT_DIR="$(expand_path "${ECHOBOX_TRANSCRIPT_DIR:-$(read_config 'transcript_dir' "$DATA_DIR/transcripts")}")"
-    REPORT_DIR="$(expand_path "${ECHOBOX_REPORT_DIR:-$(read_config 'report_dir' "$DATA_DIR/reports")}")"
-    STATE_DIR="${ECHOBOX_STATE_DIR:-$(dirname "$REPORT_DIR")}"
+    local paths_output key value
+    paths_output=$("$ECHOBOX_PYTHON" "$ECHOBOX_DIR/pipeline/read_config.py" paths "$CONFIG" 2>/dev/null || true)
+    while IFS='=' read -r key value; do
+        [ -n "$key" ] || continue
+        eval "$key=$value"
+    done <<EOF
+$paths_output
+EOF
+    DATA_DIR="${DATA_DIR:-$HOME/echobox-data}"
+    TRANSCRIPT_DIR="${TRANSCRIPT_DIR:-$DATA_DIR/transcripts}"
+    REPORT_DIR="${REPORT_DIR:-$DATA_DIR/reports}"
+    STATE_DIR="${STATE_DIR:-$(dirname "$REPORT_DIR")}"
     mkdir -p "$REPORT_DIR" "$STATE_DIR"
 }
 
@@ -129,9 +128,9 @@ PUBLISH_PASSWORD="${ECHOBOX_PUBLISH_PASSWORD:-$(read_config 'publish.password' '
 PUBLISH_SCOPE="${ECHOBOX_PUBLISH_SCOPE:-$(read_config 'publish.scope' '')}"
 
 if [ "$PUBLISH_PLATFORM" = "vercel" ] && command -v vercel &>/dev/null; then
-    if [ -z "$PUBLISH_PASSWORD" ] || [ "$PUBLISH_PASSWORD" = "change-me" ]; then
+    if [ -z "$PUBLISH_PASSWORD" ]; then
         echo "ERROR: Set ECHOBOX_PUBLISH_PASSWORD before deploying to Vercel."
-        echo "  Reports deployed with default passwords are publicly readable."
+        echo "  Reports deployed without a password are publicly readable."
         echo "  export ECHOBOX_PUBLISH_PASSWORD='your-secure-password'"
         echo ""
         echo "Falling back to local publish."

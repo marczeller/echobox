@@ -184,7 +184,7 @@ After probing, tell the user what you found and ask:
 
 ### Step 6: Verify context works
 
-After configuring, run `./echobox demo --verbose` and check the context stats line:
+After configuring, run `./echobox enrich tests/fixtures/2026-03-15_10-00_roadmap-sync.txt --verbose` and check the context stats line:
 - `Context: 0 chars, 0 sections` = broken, nothing was injected
 - `Context: 500 chars, 2 sections` = working, calendar + docs flowing
 
@@ -237,7 +237,6 @@ echobox/
 
   pipeline/
     orchestrator.sh                Transcript -> enrich -> publish -> notify
-    ingest.sh                      Move raw artifacts into data dirs
     calendar.sh                    Calendar lookup helper
     enrich.py                      Transcript/context -> LLM enrichment
     fit.py                         Hardware-aware model selection
@@ -249,8 +248,6 @@ echobox/
     pipeline-check.sh              Pipeline health checks
     context-check.sh               Context-enrichment checks
     repo-quality.sh                Repo hygiene checks
-    composite-score.sh             Composite scoring helper
-
   templates/
     report.html                    Local HTML template
     enrichment_prompt.txt          Optional prompt template override

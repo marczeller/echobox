@@ -178,7 +178,7 @@ claude auth login
 Check these separately:
 
 1. `publish.platform: vercel`
-2. `publish.password` is not empty or `change-me`
+2. `publish.password` is not empty
 3. `vercel` CLI is installed and authenticated
 4. `publish.scope` is correct if you deploy into a team scope
 

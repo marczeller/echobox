@@ -51,7 +51,7 @@ def main():
             "log_dir": str(data / "logs"),
             "mlx_url": "http://127.0.0.1:8090/v1/chat/completions",
             "mlx_model": "demo-model",
-            "publish": {"engine": "local", "platform": "local"},
+            "publish": {"engine": "local", "platform": "local", "password": "super-secret-password"},
         }
         CONFIG.write_text(json.dumps(config_payload))
 
@@ -107,6 +107,18 @@ def main():
         )
         check(status.returncode == 0, f"status exits successfully: {status.returncode}")
         check("Pipeline: READY" in status.stdout, "status reports READY when dependencies are satisfied")
+
+        shown_config = subprocess.run(
+            [sys.executable, "echobox.py", "config"],
+            cwd=REPO,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        check(shown_config.returncode == 0, f"config exits successfully: {shown_config.returncode}")
+        check("(redacted)" in shown_config.stdout, "config redacts sensitive values")
+        check("super-secret-password" not in shown_config.stdout, "config does not print publish password")
 
         listing = subprocess.run(
             [sys.executable, "echobox.py", "list"],
