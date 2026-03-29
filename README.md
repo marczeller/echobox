@@ -93,6 +93,7 @@ See a [sample report](docs/sample-report.html) generated from the demo fixtures.
 | `echobox actions` | Show action items across enriched calls |
 | `echobox summary` | Show a weekly cross-call summary |
 | `echobox reprocess <name>` | Re-run enrichment and publishing for a call |
+| `echobox serve [--port N] [--tunnel tailscale|bore]` | Serve local reports behind the shared password gate |
 | `echobox smart-setup [--with-calendar]` | Probe the machine and draft setup recommendations |
 | `echobox status` | Check whether the pipeline is configured correctly |
 | `echobox config` | Show parsed config values |

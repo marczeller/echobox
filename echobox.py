@@ -607,8 +607,7 @@ def cmd_serve(ctx: AppContext, args: argparse.Namespace) -> int:
         print("Error: set publish.password in config/echobox.yaml before serving.", file=sys.stderr)
         print("  Reports without a real password are publicly readable.", file=sys.stderr)
         return 1
-    start_server(ctx.report_dir, password, args.port, args.tunnel)
-    return 0
+    return start_server(ctx.report_dir, password, args.port, args.tunnel)
 
 
 def custom_help(version: str) -> str:

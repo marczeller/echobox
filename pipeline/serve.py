@@ -11,9 +11,11 @@ All modes are password-gated with cookie-based auth.
 from __future__ import annotations
 
 import hashlib
+import html
 import hmac
 import http.server
-import os
+import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -24,6 +26,7 @@ from pathlib import Path
 DEFAULT_PORT = 8090
 COOKIE_NAME = "echobox_auth"
 COOKIE_MAX_AGE = 86400 * 7
+SLUG_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 def make_token(password: str, secret: str) -> str:
@@ -31,7 +34,7 @@ def make_token(password: str, secret: str) -> str:
 
 
 LOGIN_HTML = """<!DOCTYPE html>
-<html><head>
+<html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Echobox Reports</title>
 <style>
@@ -49,15 +52,16 @@ button{font-size:15px;font-weight:700;padding:14px;background:#ff7b54;color:#101
 <div class="gate">
 <h1>Echobox</h1>
 <p class="sub">Call Reports</p>
-<form method=POST action="/">
-<input type=password name=password placeholder=Password autofocus>
-<button>Enter</button>
+<form method="post" action="/">
+<label for="password" class="sub">Password</label>
+<input id="password" type="password" name="password" placeholder="Password" autocomplete="current-password" autofocus required>
+<button type="submit">Enter</button>
 <p class="err">WRONG_MSG</p>
 </form></div></body></html>"""
 
 
 REPORT_LIST_HTML = """<!DOCTYPE html>
-<html><head>
+<html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Echobox Reports</title>
 <style>
@@ -81,7 +85,6 @@ REPORT_LIST
 class ReportHandler(http.server.BaseHTTPRequestHandler):
     password = ""
     hmac_secret = ""
-    valid_token = ""
     report_dir = Path(".")
 
     def log_message(self, format, *args):
@@ -100,27 +103,67 @@ class ReportHandler(http.server.BaseHTTPRequestHandler):
     def _is_authenticated(self) -> bool:
         cookies = self._parse_cookies()
         token = cookies.get(COOKIE_NAME, "")
-        return hmac.compare_digest(token, self.valid_token)
+        if not token:
+            return False
+        expected = make_token(self.password, self.hmac_secret)
+        return hmac.compare_digest(token, expected)
+
+    def _set_default_headers(self) -> None:
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; style-src 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+        )
+
+    def _send_html(self, html: str, status: int = 200, cache_control: str = "private, no-store") -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", cache_control)
+        self._set_default_headers()
+        self.end_headers()
+        self.wfile.write(html.encode("utf-8"))
+
+    def _normalize_slug(self, raw_path: str) -> str | None:
+        parsed = urllib.parse.urlsplit(raw_path)
+        if parsed.query or parsed.fragment:
+            return None
+        prefix = "/report/"
+        if not parsed.path.startswith(prefix):
+            return None
+        slug = urllib.parse.unquote(parsed.path[len(prefix):]).rstrip("/")
+        if not slug or "/" in slug or "\\" in slug:
+            return None
+        if not SLUG_PATTERN.fullmatch(slug):
+            return None
+        return slug
 
     def _send_login(self, wrong: bool = False):
         html = LOGIN_HTML.replace("WRONG_MSG", "Wrong password." if wrong else "")
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.end_headers()
-        self.wfile.write(html.encode())
+        self._send_html(html)
 
     def _send_report_list(self):
         reports = []
-        for d in sorted(self.report_dir.iterdir(), reverse=True):
+        try:
+            entries = sorted(self.report_dir.iterdir(), reverse=True)
+        except OSError:
+            self.send_error(500, "Could not read reports directory")
+            return
+
+        for d in entries:
             report_file = d / "report.html"
             if d.is_dir() and report_file.exists():
-                stat = report_file.stat()
+                try:
+                    stat = report_file.stat()
+                except OSError:
+                    continue
                 size_kb = stat.st_size // 1024
                 modified = time.strftime("%Y-%m-%d %H:%M", time.localtime(stat.st_mtime))
-                name = d.name
+                name = urllib.parse.quote(d.name, safe="")
                 reports.append(
                     f'<a class="report" href="/report/{name}">'
-                    f'<div class="name">{name}</div>'
+                    f'<div class="name">{html.escape(d.name)}</div>'
                     f'<div class="meta">{modified} · {size_kb} KB</div></a>'
                 )
         if reports:
@@ -129,66 +172,90 @@ class ReportHandler(http.server.BaseHTTPRequestHandler):
             report_list = '<p class="empty">No reports yet. Run echobox enrich + echobox publish first.</p>'
 
         html = REPORT_LIST_HTML.replace("REPORT_LIST", report_list)
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Cache-Control", "private, no-cache")
-        self.end_headers()
-        self.wfile.write(html.encode())
+        self._send_html(html)
 
     def do_GET(self):
         if not self._is_authenticated():
             self._send_login()
             return
 
-        if self.path == "/" or self.path == "":
+        parsed = urllib.parse.urlsplit(self.path)
+        if parsed.path == "/" or parsed.path == "":
             self._send_report_list()
             return
 
-        if self.path.startswith("/report/"):
-            slug = self.path[len("/report/"):].rstrip("/")
-            slug = slug.replace("..", "").replace("/", "")
-            report_file = self.report_dir / slug / "report.html"
-            if report_file.exists():
+        slug = self._normalize_slug(self.path)
+        if slug:
+            report_file = (self.report_dir / slug / "report.html").resolve()
+            try:
+                report_file.relative_to(self.report_dir.resolve())
+            except ValueError:
+                self.send_error(404)
+                return
+            if report_file.exists() and report_file.is_file():
+                try:
+                    body = report_file.read_bytes()
+                except OSError:
+                    self.send_error(500, "Could not read report")
+                    return
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.send_header("Cache-Control", "private, no-cache")
+                self.send_header("Cache-Control", "private, no-store")
+                self._set_default_headers()
                 self.end_headers()
-                self.wfile.write(report_file.read_bytes())
+                self.wfile.write(body)
                 return
 
         self.send_error(404)
 
     def do_POST(self):
-        content_length = int(self.headers.get("Content-Length", 0))
+        parsed = urllib.parse.urlsplit(self.path)
+        if parsed.path != "/" or parsed.query or parsed.fragment:
+            self.send_error(404)
+            return
+
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            self.send_error(400, "Invalid Content-Length")
+            return
         if content_length > 1024:
             self.send_error(413)
             return
-        body = self.rfile.read(content_length).decode()
+        try:
+            body = self.rfile.read(content_length).decode("utf-8")
+        except UnicodeDecodeError:
+            self.send_error(400, "Invalid form encoding")
+            return
         params = urllib.parse.parse_qs(body)
         submitted = params.get("password", [""])[0]
+        valid_token = make_token(self.password, self.hmac_secret)
 
-        if hmac.compare_digest(make_token(submitted, self.hmac_secret), self.valid_token):
+        if hmac.compare_digest(make_token(submitted, self.hmac_secret), valid_token):
             self.send_response(303)
             self.send_header("Location", "/")
             self.send_header(
                 "Set-Cookie",
-                f"{COOKIE_NAME}={self.valid_token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={COOKIE_MAX_AGE}",
+                f"{COOKIE_NAME}={valid_token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={COOKIE_MAX_AGE}",
             )
+            self.send_header("Cache-Control", "no-store")
+            self._set_default_headers()
             self.end_headers()
         else:
             self._send_login(wrong=True)
 
 
-def start_server(report_dir: Path, password: str, port: int = DEFAULT_PORT, tunnel: str = "") -> None:
-    secret = hashlib.sha256(f"echobox:{password}".encode()).hexdigest()
-    token = make_token(password, secret)
-
+def start_server(report_dir: Path, password: str, port: int = DEFAULT_PORT, tunnel: str = "") -> int:
+    secret = secrets.token_hex(32)
     ReportHandler.password = password
     ReportHandler.hmac_secret = secret
-    ReportHandler.valid_token = token
-    ReportHandler.report_dir = report_dir
+    ReportHandler.report_dir = report_dir.resolve()
 
-    server = http.server.HTTPServer(("0.0.0.0", port), ReportHandler)
+    try:
+        server = http.server.ThreadingHTTPServer(("0.0.0.0", port), ReportHandler)
+    except OSError as exc:
+        print(f"Error: could not start report server on port {port}: {exc}", file=sys.stderr)
+        return 1
 
     import socket
     hostname = socket.gethostname()
@@ -225,9 +292,14 @@ def start_server(report_dir: Path, password: str, port: int = DEFAULT_PORT, tunn
     finally:
         if tunnel_proc:
             tunnel_proc.terminate()
+            try:
+                tunnel_proc.wait(timeout=5)
+            except Exception:
+                tunnel_proc.kill()
         if tunnel == "tailscale":
             subprocess.run(["tailscale", "serve", "--remove", "/"], capture_output=True)
         server.server_close()
+    return 0
 
 
 def _start_tailscale(port: int) -> str:
@@ -285,8 +357,7 @@ def main() -> int:
         print(f"Error: report directory not found: {report_dir}", file=sys.stderr)
         return 1
 
-    start_server(report_dir, args.password, args.port, args.tunnel)
-    return 0
+    return start_server(report_dir, args.password, args.port, args.tunnel)
 
 
 if __name__ == "__main__":

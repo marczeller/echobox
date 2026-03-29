@@ -11,9 +11,11 @@ Echobox records calls, transcribes them locally, diarizes speakers, enriches the
 - `./echobox fit` writes recommended `whisper_model` and `mlx_model` values into `config/echobox.yaml`.
 - `./echobox demo` exercises the enrichment flow without requiring a running LLM server.
 - `./echobox watch` is the real automatic pipeline entrypoint on macOS only.
+- `./echobox serve` runs a password-gated HTTP server for locally published reports.
 - Publishing has two separate knobs:
   - `publish.engine`: `local` or `claude` for HTML generation.
   - `publish.platform`: `local` or `vercel` for where the report is published.
+  - `echobox serve --tunnel tailscale|bore` is separate from publish and shares local reports over HTTP.
 
 ## Actual Setup Path
 
@@ -77,6 +79,7 @@ These are the commands exposed by `./echobox` today:
 | `echobox reprocess <name>` | Re-enrich and re-publish an existing call |
 | `echobox enrich <transcript>` | Run LLM enrichment on a transcript file |
 | `echobox publish <enrichment>` | Generate and optionally deploy an HTML report |
+| `echobox serve [--port N] [--tunnel tailscale|bore]` | Serve local reports with a password gate |
 | `echobox watch` | Start the built-in macOS watcher and recorder |
 | `echobox setup` | Minimal interactive config wizard |
 | `echobox smart-setup [--with-calendar]` | Probe the machine and draft setup recommendations |
@@ -90,7 +93,7 @@ These are the commands exposed by `./echobox` today:
 | `echobox version` | Print version |
 | `echobox help` | Show CLI help |
 
-Commands that were easy to miss in the old docs: `preview`, `actions`, `summary`, `quality`, and `test`.
+Commands that were easy to miss in the old docs: `preview`, `actions`, `summary`, `quality`, `test`, and `serve`.
 
 ## Configuration
 
@@ -106,9 +109,31 @@ Key settings:
 - `meeting_types.*`: call classification rules that choose which context sources to use.
 - `publish.engine`: `local` or `claude` HTML generation.
 - `publish.platform`: `local` or `vercel` report publishing.
-- `publish.password` and `publish.scope`: Vercel gate settings.
+- `publish.password`: shared password for `echobox serve` and the Vercel gate.
+- `publish.scope`: Vercel gate setting.
 - `notify.enabled` and `notify.command`: post-publish notification hook.
 - `transcript_dir`, `enrichment_dir`, `report_dir`, and `log_dir`: overridable storage locations.
+
+## Share Reports
+
+Use `./echobox serve` when reports are already published locally and you want a password-gated HTTP server.
+
+- `./echobox serve`: bind locally on port `8090`
+- `./echobox serve --port 9000`: use a different local port
+- `./echobox serve --tunnel bore`: expose the local server through Bore
+- `./echobox serve --tunnel tailscale`: expose the local server through `tailscale serve`
+
+Sharing tiers:
+
+- `local`: local port only, suitable for LAN access or your own tunnel
+- `tailscale`: local port plus `tailscale serve` for team access over Tailscale
+- `vercel`: existing deploy flow via `./echobox publish`, unchanged
+
+Guardrails:
+
+- `publish.password` must be set to a real value before serving.
+- `echobox serve` only serves files from `report_dir`; it does not publish new reports.
+- Treat Bore and Tailscale URLs as authenticated-but-public endpoints for anyone with the password.
 
 ## Configure Context Sources (critical for enrichment quality)
 
