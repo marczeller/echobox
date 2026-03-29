@@ -1,6 +1,6 @@
 #!/bin/bash
 # Post-call pipeline orchestrator
-# Triggered by trnscrb on_stop or manually: orchestrator.sh <transcript_id>
+# Triggered by echobox watch or manually: orchestrator.sh <transcript_id>
 
 set -e
 

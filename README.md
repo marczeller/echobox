@@ -10,9 +10,9 @@ Core processing stays on your machine: transcription, diarization, and enrichmen
 
 ## What Happens When You Take a Call
 
-1. **Call detected** — trnscrb watches your browser tabs for Meet/Zoom/Teams URLs
+1. **Call detected** — Echobox watches your browser tabs and meeting apps for Meet/Zoom/Teams URLs
 2. **Audio captured** — BlackHole records system audio (both sides of the call) to WAV
-3. **Call ends** — trnscrb fires the on-stop hook, triggering the pipeline
+3. **Call ends** — the built-in watcher stops recording and triggers the pipeline
 4. **Transcribed** — mlx-whisper transcribes the WAV locally with MLX/Metal on Apple Silicon
 5. **Speakers labeled** — pyannote.audio diarizes speakers (SPEAKER_00, SPEAKER_01...)
 6. **Calendar matched** — the transcript timestamp is matched to your calendar event, pulling attendee names
@@ -45,14 +45,14 @@ After the call: `echobox list` to browse, `echobox open` to view the report, `ec
 | Calendar, docs, messages context | Works |
 | Local HTML publishing | Works |
 | Vercel publishing | Works |
-| Auto call detection | Requires trnscrb + manual patches |
+| Auto call detection | Built in |
 
 ## Setup
 
 > Requires: macOS (Apple Silicon), Homebrew, Python 3.12+
 
 > Prerequisites:
-> Apple Silicon, Homebrew, BlackHole, `trnscrb`, a HuggingFace token for pyannote, and a local MLX model/server.
+> Apple Silicon, Homebrew, BlackHole, `sounddevice`, a HuggingFace token for pyannote, and a local MLX model/server.
 
 ```bash
 git clone https://github.com/marczeller/echobox.git && cd echobox
@@ -61,10 +61,9 @@ git clone https://github.com/marczeller/echobox.git && cd echobox
 
 1. Install dependencies and configure with `./install.sh`; on fresh installs this now runs hardware fit to choose local models
 2. Optionally run `./echobox smart-setup` to probe the machine and draft context-source recommendations
-3. Apply the manual `trnscrb` patch instructions in [patches/README.md](patches/README.md)
-4. Start your MLX model server
-5. Run `./echobox demo` to verify
-6. Run `./echobox watch` to start recording
+3. Start your MLX model server
+4. Run `./echobox demo` to verify
+5. Run `./echobox watch` to start recording
 
 See a [sample report](docs/sample-report.html) generated from the demo fixtures.
 
@@ -130,14 +129,13 @@ Start with:
 
 Logs live in `~/echobox-data/logs/`.
 
-For recording issues, patch requirements, and model-server problems, see [docs/troubleshooting.md](docs/troubleshooting.md).
+For recording issues, built-in recorder troubleshooting, and model-server problems, see [docs/troubleshooting.md](docs/troubleshooting.md).
 
 ## Where To Go Next
 
 - Setup and install steps: [docs/setup.md](docs/setup.md)
 - Context source configuration: [docs/context-sources.md](docs/context-sources.md)
 - Troubleshooting: [docs/troubleshooting.md](docs/troubleshooting.md)
-- Patch details for `trnscrb`: [patches/README.md](patches/README.md)
 - Architecture rationale: [docs/design-decisions.md](docs/design-decisions.md)
 
 ## License

@@ -31,7 +31,7 @@ cd ~/echobox
 ./install.sh
 ```
 
-`./install.sh` checks for `ffmpeg`, `trnscrb`, Python 3.12+, `mlx-whisper`, `pyannote.audio`, BlackHole, and `HF_TOKEN`. It also creates `config/echobox.yaml`, runs the model fit flow unless your config already has model settings you keep, creates `~/echobox-data/*`, and writes an optional launchd service file.
+`./install.sh` checks for `ffmpeg`, `sounddevice`, Python 3.12+, `mlx-whisper`, `pyannote.audio`, BlackHole, and `HF_TOKEN`. It also creates `config/echobox.yaml`, runs the model fit flow unless your config already has model settings you keep, creates `~/echobox-data/*`, and writes an optional launchd service file.
 
 If you are installing Python packages manually instead of using the installer, use:
 
@@ -106,18 +106,14 @@ python3.12 -m pip install --user mlx-lm
 mlx_lm.server --model <configured-mlx_model> --port 8090
 ```
 
-### Step 8: Apply `trnscrb` Patch Instructions
-
-Read [patches/README.md](../patches/README.md) and manually apply the six documented `trnscrb` changes. These files are instruction files, not guaranteed applicable unified diffs.
-
-### Step 9: Smoke-Test the Pipeline
+### Step 8: Smoke-Test the Pipeline
 
 ```bash
 ./echobox demo
 ./echobox quality
 ```
 
-### Step 10: Start Recording
+### Step 9: Start Recording
 
 ```bash
 ./echobox watch

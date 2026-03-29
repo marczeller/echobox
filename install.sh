@@ -3,7 +3,6 @@ set -e
 
 ECHOBOX_DIR="$(cd "$(dirname "$0")" && pwd)"
 CONFIG_DIR="$ECHOBOX_DIR/config"
-PATCHES_DIR="$ECHOBOX_DIR/patches"
 START_TIME=$(date +%s)
 
 RED='\033[0;31m'
@@ -14,7 +13,7 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 STEP_NUM=0
-TOTAL_STEPS=11
+TOTAL_STEPS=9
 
 ok()   { echo -e "  ${GREEN}[ok]${NC} $1"; }
 warn() { echo -e "  ${YELLOW}[!!]${NC} $1"; }
@@ -126,16 +125,6 @@ else
     ok "ffmpeg $(ffmpeg -version 2>&1 | head -1 | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?')"
 fi
 
-if ! command -v trnscrb &>/dev/null; then
-    fail "trnscrb not found"
-    echo "    Install: brew install ramiloif/tap/trnscrb"
-    echo "    Then re-run this installer."
-    ERRORS=$((ERRORS + 1))
-else
-    TRNSCRB_VERSION=$(trnscrb --version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
-    ok "trnscrb $TRNSCRB_VERSION"
-fi
-
 PYTHON_CMD=""
 for cmd in python3.12 python3 python; do
     if command -v "$cmd" &>/dev/null; then
@@ -178,6 +167,12 @@ if $PYTHON_CMD -c "import yaml" 2>/dev/null; then
     ok "PyYAML installed"
 else
     offer_python_package_install "pyyaml" ""
+fi
+
+if $PYTHON_CMD -c "import sounddevice" 2>/dev/null; then
+    ok "sounddevice installed"
+else
+    offer_python_package_install "sounddevice" ""
 fi
 
 if $PYTHON_CMD -c "import pyannote.audio" 2>/dev/null; then
@@ -229,35 +224,6 @@ elif [ "$HAS_MLX_WHISPER" = "true" ]; then
     fi
 else
     warn "Skipped — install mlx-whisper first, then re-run"
-fi
-
-step "Applying patches to trnscrb"
-
-TRNSCRB_SITE_PACKAGES=""
-if [ -n "$PYTHON_CMD" ]; then
-    TRNSCRB_SITE_PACKAGES=$($PYTHON_CMD -c "
-import pathlib
-import trnscrb
-print(pathlib.Path(trnscrb.__file__).parent)
-" 2>/dev/null || echo "")
-fi
-
-if [ -n "$TRNSCRB_SITE_PACKAGES" ] && [ -d "$TRNSCRB_SITE_PACKAGES" ]; then
-    for patch_desc in "$PATCHES_DIR"/*.diff; do
-        [ -f "$patch_desc" ] || continue
-        patch_name=$(basename "$patch_desc")
-        echo "    Patch: $patch_name"
-        echo "    (Review patches/README.md for manual application instructions)"
-    done
-    ok "Patch descriptions available in patches/"
-    warn "Patches must be applied manually — trnscrb install paths vary by system"
-    echo "    See: $ECHOBOX_DIR/patches/README.md"
-else
-    warn "Could not locate trnscrb package directory"
-    if [ -z "$PYTHON_CMD" ]; then
-        echo "    Install Python 3.12+ first so trnscrb can be inspected locally."
-    fi
-    echo "    Apply patches manually after installing trnscrb."
 fi
 
 step "Creating configuration"
@@ -401,14 +367,12 @@ if [ "$FIT_SKIPPED" = "true" ] && [ "$FIT_RAN" = "false" ]; then
     echo "    2. Run ./echobox fit after the missing dependency or error is fixed"
     echo "    3. Start your MLX server with the configured mlx_model"
     echo "    4. Run ./echobox status and ./echobox demo"
-    echo "    5. Apply trnscrb patches (see patches/README.md)"
-    echo "    6. Start: ./echobox watch"
-    echo "    7. Or load the launchd service for auto-start"
+    echo "    5. Start: ./echobox watch"
+    echo "    6. Or load the launchd service for auto-start"
 else
     echo "    2. Start your MLX server with the configured mlx_model"
     echo "    3. Run ./echobox status and ./echobox demo"
-    echo "    4. Apply trnscrb patches (see patches/README.md)"
-    echo "    5. Start: ./echobox watch"
-    echo "    6. Or load the launchd service for auto-start"
+    echo "    4. Start: ./echobox watch"
+    echo "    5. Or load the launchd service for auto-start"
 fi
 echo ""

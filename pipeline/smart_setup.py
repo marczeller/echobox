@@ -9,6 +9,7 @@ This script is intentionally conservative:
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import os
 import re
@@ -76,6 +77,14 @@ def readable_sqlite(path: Path) -> bool:
             connection.execute("SELECT count(*) FROM sqlite_master").fetchone()
         finally:
             connection.close()
+        return True
+    except Exception:
+        return False
+
+
+def module_exists(name: str) -> bool:
+    try:
+        importlib.import_module(name)
         return True
     except Exception:
         return False
@@ -254,8 +263,11 @@ def gather_probes(with_calendar: bool, days: int) -> dict[str, object]:
             "gws": command_exists("gws"),
             "icalBuddy": command_exists("icalBuddy"),
             "ffmpeg": command_exists("ffmpeg"),
-            "trnscrb": command_exists("trnscrb"),
             "sqlite3": command_exists("sqlite3"),
+        },
+        "modules": {
+            "echobox_recorder": module_exists("echobox_recorder"),
+            "sounddevice": module_exists("sounddevice"),
         },
         "apps": {"Slack": app_exists("Slack"), "Messages": app_exists("Messages"), "Obsidian": app_exists("Obsidian")},
         "blackhole_installed": detect_blackhole(),
@@ -375,7 +387,8 @@ def render_markdown(report: dict[str, object]) -> str:
         f"- Platform: `{probes['system']['platform']}`",
         f"- BlackHole detected: `{probes['blackhole_installed']}`",
         f"- `ffmpeg`: `{bool(probes['commands']['ffmpeg'])}`",
-        f"- `trnscrb`: `{bool(probes['commands']['trnscrb'])}`",
+        f"- `echobox_recorder`: `{bool(probes['modules']['echobox_recorder'])}`",
+        f"- `sounddevice`: `{bool(probes['modules']['sounddevice'])}`",
         f"- Calendar CLI: `{probes['calendar_probe']['tool'] or 'none detected'}`",
         f"- Slack.app: `{bool(probes['apps']['Slack'])}`",
         f"- Messages.app DB exists: `{probes['messages']['exists']}`",

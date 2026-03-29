@@ -20,7 +20,7 @@ git clone https://github.com/marczeller/echobox.git && cd echobox
 ## Guidelines
 
 - Keep changes focused — one fix or feature per PR
-- Don't modify `patches/*.diff` files — they are applied verbatim to trnscrb
+- Preserve the attribution notice in `echobox_recorder/LICENSE` when modifying the vendored recorder code
 - `templates/report.html` uses CSS variables — don't hardcode colors
 - Test on macOS (Apple Silicon) — that's the target platform
 - No new dependencies without discussion

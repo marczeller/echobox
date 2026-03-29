@@ -17,7 +17,7 @@ check_remote() {
 }
 
 # 1. App detection: browser tabs checked BEFORE native apps
-S=$(check_remote "python3 -c \"import trnscrb, inspect; src=inspect.getsource(trnscrb.watcher); print(1 if 'browser' in src.lower() else 0)\"")
+S=$(check_remote "python3 -c \"from pathlib import Path; text=Path(\'echobox_recorder/watcher.py\').read_text(); print(1 if '_browser_has_meeting_tab' in text else 0)\"")
 if [ "$S" = "1" ] 2>/dev/null; then SCORE=$((SCORE+1)); echo "1  [ok] App detection: browser-first"; else echo "1  [!!] App detection: still native-first"; fi
 
 # 2. FFmpeg available for audio processing
@@ -44,13 +44,13 @@ if [ "$S" -ge 1 ] 2>/dev/null; then SCORE=$((SCORE+1)); echo "6  [ok] Notificati
 S=$(grep -c 'ANTHROPIC_API_KEY=""' "$ECHOBOX_DIR/pipeline/publish.sh" 2>/dev/null)
 if [ "$S" -ge 1 ] 2>/dev/null; then SCORE=$((SCORE+1)); echo "7  [ok] Auth: OAuth-only"; else echo "7  [!!] Auth: may use paid API key"; fi
 
-# 8. WAV retention patch described
-S=$(grep -c 'KEEP_WAV\|keep.*wav\|retention' "$ECHOBOX_DIR/patches/02-wav-retention.diff" 2>/dev/null)
-if [ "$S" -ge 1 ] 2>/dev/null; then SCORE=$((SCORE+1)); echo "8  [ok] WAV: retention patch exists"; else echo "8  [!!] WAV: no retention patch"; fi
+# 8. WAV retention built into recorder
+S=$(grep -c 'writeframes\|\.wav\|_write_wav' "$ECHOBOX_DIR/echobox_recorder/recorder.py" 2>/dev/null)
+if [ "$S" -ge 1 ] 2>/dev/null; then SCORE=$((SCORE+1)); echo "8  [ok] WAV: retention built in"; else echo "8  [!!] WAV: retention missing"; fi
 
-# 9. On-stop hook for auto-trigger
-S=$(grep -c 'on.stop\|on_stop\|ON_STOP' "$ECHOBOX_DIR/patches/03-on-stop-hook.diff" 2>/dev/null)
-if [ "$S" -ge 1 ] 2>/dev/null; then SCORE=$((SCORE+1)); echo "9  [ok] Auto-trigger: on-stop hook exists"; else echo "9  [!!] Auto-trigger: no hook"; fi
+# 9. Built-in callback trigger for auto-processing
+S=$(grep -c 'on_meeting_end\|subprocess.Popen' "$ECHOBOX_DIR/echobox.py" 2>/dev/null)
+if [ "$S" -ge 1 ] 2>/dev/null; then SCORE=$((SCORE+1)); echo "9  [ok] Auto-trigger: built-in callback exists"; else echo "9  [!!] Auto-trigger: no callback"; fi
 
 # 10. Error logging to file
 S=$(grep -c 'log\|LOG\|tee\|LOGFILE' "$ECHOBOX_DIR/pipeline/orchestrator.sh" 2>/dev/null)

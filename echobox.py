@@ -12,6 +12,9 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from echobox_recorder import EchoboxRecorder
+from echobox_recorder import EchoboxWatcher
+
 from pipeline import actions as actions_module
 from pipeline import clean as clean_module
 from pipeline import demo as demo_module
@@ -328,32 +331,32 @@ def cmd_watch(ctx: AppContext, _args: argparse.Namespace) -> int:
     print(f"Transcripts will be saved to: {ctx.transcript_dir}")
     print("Press Ctrl+C to stop.")
     print("")
-    if not shutil.which("trnscrb"):
-        print("Error: trnscrb not found.")
-        print("  Install: brew install ramiloif/tap/trnscrb")
-        return 1
-    hook_cmd = f"bash {ctx.repo_dir / 'pipeline' / 'orchestrator.sh'} {{transcript_id}}"
-    process = subprocess.Popen(
-        [
-            "trnscrb",
-            "watch",
-            "--output-dir",
-            str(ctx.transcript_dir),
-            "--on-stop",
-            hook_cmd,
-        ],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
     watcher_log = ctx.log_dir / "watcher.log"
     watcher_log.parent.mkdir(parents=True, exist_ok=True)
+
+    def emit(message: str) -> None:
+        print(message)
+        with watcher_log.open("a", encoding="utf-8") as log_handle:
+            log_handle.write(f"{message}\n")
+
+    def on_meeting_end(transcript_path: Path) -> None:
+        emit(f"Meeting ended: {transcript_path.name}")
+        subprocess.Popen(
+            ["bash", str(ctx.repo_dir / "pipeline" / "orchestrator.sh"), transcript_path.stem],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+    recorder = EchoboxRecorder(
+        output_dir=ctx.transcript_dir,
+        whisper_model=get_config(ctx.config, "whisper_model", "mlx-community/whisper-large-v3-mlx"),
+        logger=emit,
+    )
+    watcher = EchoboxWatcher(recorder, on_meeting_end=on_meeting_end, logger=emit)
+
     with watcher_log.open("a", encoding="utf-8") as log_handle:
-        assert process.stdout is not None
-        for line in process.stdout:
-            print(line, end="")
-            log_handle.write(line)
-    return process.wait()
+        log_handle.write("Starting built-in Echobox recorder\n")
+    return watcher.run_forever()
 
 
 def cmd_list(ctx: AppContext, _args: argparse.Namespace) -> int:

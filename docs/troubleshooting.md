@@ -25,16 +25,16 @@ Logs live in `~/echobox-data/logs/`:
 
 ## Recording Issues
 
-### `trnscrb` doesn't detect my call on macOS
+### The built-in watcher does not detect my call on macOS
 
 **Symptoms:** Call starts but recording never begins.
 
 Check these in order:
 
-1. `./echobox status` should show `trnscrb` installed and BlackHole present.
-2. Verify the manual `trnscrb` patch instructions in `patches/README.md` were applied.
-3. Confirm BlackHole is part of your Multi-Output Device in Audio MIDI Setup.
-4. Confirm the system output device is that Multi-Output Device.
+1. `./echobox status` should show the recorder package and `sounddevice` importable, and BlackHole present.
+2. Confirm BlackHole is part of your Multi-Output Device in Audio MIDI Setup.
+3. Confirm the system output device is that Multi-Output Device.
+4. Check `~/echobox-data/logs/watcher.log` for browser detection or recorder errors.
 
 ### Recording captures only my voice on macOS
 
@@ -48,7 +48,7 @@ Fix:
 
 ### WAV files disappear after transcription
 
-Check that the manual `trnscrb` instructions corresponding to `02-wav-retention.diff` were applied, or set `TRNSCRB_KEEP_WAV=1` if your local `trnscrb` build supports it.
+Echobox now keeps WAV files by default. If they are missing, check `~/echobox-data/transcripts` and `~/echobox-data/logs/watcher.log` for recorder or filesystem errors.
 
 ## Transcription Issues
 
@@ -85,7 +85,7 @@ Common causes:
 1. `HF_TOKEN` is missing.
 2. The pyannote model license was not accepted.
 3. Your Python environment does not have `pyannote.audio` installed.
-4. On Apple Silicon, the corresponding `trnscrb` manual patch for diarization fallback was not applied.
+4. The local Python environment cannot initialize the diarization pipeline correctly on this machine.
 
 Checks:
 

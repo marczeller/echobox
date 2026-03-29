@@ -127,18 +127,12 @@ def main() -> int:
         issues.append("  - Run ./install.sh or create config/echobox.yaml")
         config = {}
 
-    if has_command("trnscrb"):
-        version_text = command_output(["trnscrb", "--version"])
-        version = "?"
-        for token in version_text.split():
-            if token.count(".") == 2 and token[0].isdigit():
-                version = token
-                break
-        print(f"  trnscrb:        installed ({version})")
+    if module_importable("echobox_recorder"):
+        print("  Recorder:       importable")
     else:
-        print("  trnscrb:        NOT FOUND")
+        print("  Recorder:       NOT FOUND")
         ready = False
-        issues.append("  - Install trnscrb: brew install ramiloif/tap/trnscrb")
+        issues.append("  - Ensure the built-in echobox_recorder package is present")
 
     if has_command("ffmpeg"):
         print("  ffmpeg:         installed")
@@ -160,6 +154,13 @@ def main() -> int:
         print("  mlx-whisper:    NOT FOUND")
         ready = False
         issues.append("  - Install mlx-whisper: python3 -m pip install --user mlx-whisper")
+
+    if module_importable("sounddevice"):
+        print("  sounddevice:    importable")
+    else:
+        print("  sounddevice:    NOT FOUND")
+        ready = False
+        issues.append("  - Install sounddevice: python3 -m pip install --user sounddevice")
 
     if module_importable("pyannote.audio"):
         print("  pyannote:       importable")

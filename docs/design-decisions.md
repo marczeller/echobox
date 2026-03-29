@@ -24,9 +24,17 @@ This document explains the architectural choices behind Echobox and why each dec
 
 **Decision:** Check browser tabs for meeting URLs before checking for native apps.
 
-**Reasoning:** The majority of calls happen in web browsers -- Google Meet, Zoom Web, Microsoft Teams Web. The default trnscrb implementation only watches for native apps (Zoom.app, Teams.app, FaceTime), which misses most calls. By querying browser tabs via AppleScript first, we catch the common case before falling through to native app detection.
+**Reasoning:** The majority of calls happen in web browsers -- Google Meet, Zoom Web, Microsoft Teams Web. The original upstream watcher only watched native apps (Zoom.app, Teams.app, FaceTime), which misses most calls. By querying browser tabs via AppleScript first, we catch the common case before falling through to native app detection.
 
 **Trade-off:** AppleScript queries add a small latency (~200ms) to each detection cycle. Acceptable given detection runs every few seconds.
+
+## Vendored Recording Subsystem
+
+**Decision:** Vendor the minimal recorder and watcher modules directly into `echobox_recorder/` instead of relying on an external recorder install plus manual patching.
+
+**Reasoning:** Manual recorder patching was the largest setup failure point. Vendoring the minimal macOS recording subsystem removes install drift, makes `./echobox watch` work after `./install.sh`, and keeps the integration points inside the Echobox codebase.
+
+**Trade-off:** Echobox now owns a small amount of platform-specific recording code and must preserve the upstream attribution notice.
 
 ## WAV Retention
 
@@ -34,7 +42,7 @@ This document explains the architectural choices behind Echobox and why each dec
 
 **Reasoning:** Speaker diarization models improve rapidly. A recording from today might benefit from a better pyannote model released next month. If the audio is deleted, the only option is "it's fine as-is." Disk space for WAV files is negligible (a 1-hour call at 44.1kHz mono is ~300 MB) compared to the cost of losing irreplaceable audio.
 
-**Trade-off:** Disk usage increases over time. Users who don't want this can set `TRNSCRB_KEEP_WAV=0`.
+**Trade-off:** Disk usage increases over time. Users who do not want indefinite retention can prune old WAV files with `./echobox clean --older N`.
 
 ## Calendar-Based Meeting Classification
 

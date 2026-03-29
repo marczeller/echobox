@@ -36,10 +36,8 @@ if [ "$DOCS_MISSING" -eq 0 ]; then SCORE=$((SCORE+1)); else echo "7  [!!]Docs: $
 COMMENTS=$(grep -c "^#\|^  #" config/echobox.example.yaml 2>/dev/null)
 if [ "$COMMENTS" -ge 20 ] 2>/dev/null; then SCORE=$((SCORE+1)); else echo "8  [!!]Config: only $COMMENTS comment lines"; fi
 
-# 9. Patches README has table with all patches
-PATCHES=$(ls patches/*.diff 2>/dev/null | wc -l | tr -d ' ')
-PATCH_ROWS=$(grep -c "\.diff" patches/README.md 2>/dev/null)
-if [ "$PATCHES" -eq "$PATCH_ROWS" ] && [ "$PATCHES" -ge 5 ]; then SCORE=$((SCORE+1)); else echo "9  [!!]Patches: $PATCHES diffs, $PATCH_ROWS in README"; fi
+# 9. Built-in recorder package exists
+if [ -f echobox_recorder/watcher.py ] && [ -f echobox_recorder/recorder.py ]; then SCORE=$((SCORE+1)); else echo "9  [!!]Recorder: vendored watcher/recorder missing"; fi
 
 # 10. HTML template has CSS variables for theming
 if grep -q "var(--\|:root" templates/report.html 2>/dev/null; then SCORE=$((SCORE+1)); else echo "10 [!!]Template: no CSS variables"; fi

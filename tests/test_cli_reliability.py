@@ -55,10 +55,6 @@ def main():
         }
         CONFIG.write_text(json.dumps(config_payload))
 
-        write_exec(
-            bin_dir / "trnscrb",
-            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'trnscrb 1.2.3'; exit 0; fi\nexit 0\n",
-        )
         write_exec(bin_dir / "ffmpeg", "#!/bin/sh\nexit 0\n")
         write_exec(bin_dir / "curl", "#!/bin/sh\nexit 0\n")
         write_exec(bin_dir / "system_profiler", "#!/bin/sh\necho 'BlackHole 2ch'\n")
@@ -69,6 +65,11 @@ def main():
         )
         (modules_dir / "mlx_whisper.py").write_text(
             "def transcribe(*args, **kwargs):\n    return {'segments': [], 'text': ''}\n"
+        )
+        (modules_dir / "sounddevice.py").write_text(
+            "default = type('Default', (), {'device': [0, 1]})()\n"
+            "def query_devices():\n    return [{'name': 'BlackHole 2ch', 'max_input_channels': 2}]\n"
+            "class RawInputStream:\n    def __init__(self, *args, **kwargs):\n        pass\n    def start(self):\n        return None\n    def stop(self):\n        return None\n    def close(self):\n        return None\n"
         )
         (modules_dir / "pyannote").mkdir()
         (modules_dir / "pyannote" / "__init__.py").write_text("")

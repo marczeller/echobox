@@ -2,7 +2,7 @@
 
 > This file provides project instructions for AI coding assistants (Gemini CLI, Cursor, Codex, Windsurf, and others). See also: `CLAUDE.md` for the same project guidance in Claude-oriented format.
 
-Echobox records calls, transcribes them locally, diarizes speakers, enriches the transcript with a local MLX server plus optional project context, and publishes an HTML report. The macOS path is end-to-end: `trnscrb` detects calls, records through BlackHole, and triggers the pipeline automatically.
+Echobox records calls, transcribes them locally, diarizes speakers, enriches the transcript with a local MLX server plus optional project context, and publishes an HTML report. The macOS path is end-to-end: `echobox watch` uses the built-in recorder, captures system audio through BlackHole, transcribes locally, and triggers the pipeline automatically.
 
 ## 30-Second Mental Model
 
@@ -25,13 +25,13 @@ If a user says "set up Echobox on my machine", follow this order:
 4. Re-run `./echobox fit` only if you want to change or re-benchmark model choices.
 5. Start the local LLM server that matches `mlx_url`.
 6. Run `./echobox demo`.
-7. Manually apply the `trnscrb` patch instructions in `patches/README.md`, then run `./echobox watch`.
+7. Run `./echobox watch`.
 
 Important:
 
 - `./install.sh` already creates `config/echobox.yaml`. If you run `./echobox setup` after `./install.sh`, the wizard exits early because the config already exists.
 - Use `./echobox setup` only when the user wants the minimal interactive wizard and either has no config yet or is willing to delete `config/echobox.yaml` first.
-- The files in `patches/*.diff` are not guaranteed to be applicable unified diffs. They are patch instructions for manual changes to the installed `trnscrb` source.
+- Recording is built in; no external recorder patching is required.
 
 ## Intelligent Setup (Agent Playbook)
 
@@ -53,7 +53,7 @@ What to probe on macOS:
 - Calendar CLIs: `gcalcli`, `gws`, `icalBuddy`
 - Messaging sources: `~/Library/Messages/chat.db`, Slack.app presence, Slack export folders if the user points to them
 - Project context: `PROJECT_DIR`, common project folders, notes directories, Obsidian presence
-- Recording prerequisites: `ffmpeg`, `trnscrb`, BlackHole
+- Recording prerequisites: `ffmpeg`, `sounddevice`, BlackHole
 
 Guardrails:
 
@@ -77,7 +77,7 @@ These are the commands exposed by `./echobox` today:
 | `echobox reprocess <name>` | Re-enrich and re-publish an existing call |
 | `echobox enrich <transcript>` | Run LLM enrichment on a transcript file |
 | `echobox publish <enrichment>` | Generate and optionally deploy an HTML report |
-| `echobox watch` | Start the `trnscrb` watcher on macOS |
+| `echobox watch` | Start the built-in macOS watcher and recorder |
 | `echobox setup` | Minimal interactive config wizard |
 | `echobox smart-setup [--with-calendar]` | Probe the machine and draft setup recommendations |
 | `echobox status` | Check dependencies, config, model server reachability, and data dirs |
@@ -214,11 +214,11 @@ If a user says "my pipeline isn't working", start with this sequence:
    - `pipeline.log`
    - `echobox.log`
    - `echobox.err`
-5. Verify the manual `trnscrb` patch instructions from `patches/README.md`.
+5. Inspect `~/echobox-data/logs/watcher.log` for browser detection or recorder errors.
 
 Fast symptom mapping:
 
-- Call detection never starts on macOS: inspect `trnscrb`, BlackHole, and the manual patch instructions.
+- Call detection never starts on macOS: inspect the built-in watcher logs, BlackHole routing, and browser/tab detection.
 - Transcript exists but enrichment fails: check `mlx_url`, model server status, and `HF_TOKEN`.
 - Enrichment works but report generation or deploy fails: check `publish.engine`, `publish.platform`, Claude CLI, and Vercel CLI separately.
 
@@ -260,8 +260,11 @@ echobox/
     fixtures/                      Demo sample inputs
     test_*.py                      Smoke tests
 
-  patches/
-    README.md                      Manual patch instructions for `trnscrb`
+  echobox_recorder/
+    __init__.py                    Public recorder API and attribution
+    watcher.py                     Built-in meeting detection for macOS
+    recorder.py                    Audio capture and local transcription
+    LICENSE                        Upstream MIT attribution for vendored code
     *.diff                         Human-readable patch descriptions
 
   docs/
@@ -273,7 +276,6 @@ echobox/
 
 ## Guardrails
 
-- Do not modify `patches/*.diff` directly unless you are intentionally changing the patch instructions themselves.
-- Treat `patches/*.diff` as documentation for manual `trnscrb` edits, not as guaranteed applicable patch files.
+- Preserve the attribution notice in `echobox_recorder/LICENSE` when modifying the vendored recorder code.
 - `templates/report.html` uses CSS variables for theming; do not hardcode colors into the template.
 - `config/echobox.yaml` may contain real passwords, tokens, and local paths; never commit user-specific values.

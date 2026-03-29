@@ -47,7 +47,6 @@ def main():
         write_exec(bin_dir / "system_profiler", "#!/bin/sh\necho 'BlackHole 2ch'\n")
         write_exec(bin_dir / "gcalcli", "#!/bin/sh\necho '{\"items\": []}'\n")
         write_exec(bin_dir / "ffmpeg", "#!/bin/sh\nexit 0\n")
-        write_exec(bin_dir / "trnscrb", "#!/bin/sh\nexit 0\n")
 
         chat_db = messages_dir / "chat.db"
         subprocess.run(["sqlite3", str(chat_db), "CREATE TABLE message (date INTEGER, text TEXT, handle_id INTEGER); CREATE TABLE handle (ROWID INTEGER, id TEXT);"], check=True)
