@@ -92,8 +92,10 @@ See a [sample report](docs/sample-report.html) generated from the demo fixtures.
 | `echobox search <term>` | Search transcripts and enrichments |
 | `echobox actions` | Show action items across enriched calls |
 | `echobox summary` | Show a weekly cross-call summary |
+| `echobox enrich <file>` | Run LLM enrichment on a transcript |
+| `echobox publish <file>` | Generate HTML report from enrichment |
 | `echobox reprocess <name>` | Re-run enrichment and publishing for a call |
-| `echobox serve [--port N] [--tunnel tailscale|bore]` | Serve local reports behind the shared password gate |
+| `echobox serve [--tunnel X]` | Serve reports with password gate (local/tailscale/bore) |
 | `echobox smart-setup [--with-calendar]` | Probe the machine and draft setup recommendations |
 | `echobox status` | Check whether the pipeline is configured correctly |
 | `echobox config` | Show parsed config values |
@@ -102,6 +104,7 @@ See a [sample report](docs/sample-report.html) generated from the demo fixtures.
 | `echobox demo` | Run the pipeline walkthrough on sample data |
 | `echobox test` | Run smoke tests |
 | `echobox clean [--older N] [--prune]` | Show disk usage and optionally delete old data |
+| `echobox version` | Print version |
 
 ## Configuration
 
