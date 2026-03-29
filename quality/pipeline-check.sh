@@ -16,9 +16,8 @@ check_remote() {
     fi
 }
 
-# 1. App detection: browser tabs checked BEFORE native apps
-S=$(check_remote "python3 -c \"from pathlib import Path; text=Path(\'echobox_recorder/watcher.py\').read_text(); print(1 if '_browser_has_meeting_tab' in text else 0)\"")
-if [ "$S" = "1" ] 2>/dev/null; then SCORE=$((SCORE+1)); echo "1  [ok] App detection: browser-first"; else echo "1  [!!] App detection: still native-first"; fi
+# 1. Built-in recorder: browser-first detection
+if grep -q "_browser_has_meeting_tab" "$ECHOBOX_DIR/echobox_recorder/watcher.py" 2>/dev/null; then SCORE=$((SCORE+1)); echo "1  [ok] App detection: browser-first (built-in recorder)"; else echo "1  [!!] App detection: built-in recorder missing browser detection"; fi
 
 # 2. FFmpeg available for audio processing
 S=$(check_remote "ffmpeg -version 2>/dev/null | head -1 | grep -c ffmpeg")
