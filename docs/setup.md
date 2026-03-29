@@ -36,7 +36,7 @@ cd ~/echobox
 If you are installing Python packages manually instead of using the installer, use:
 
 ```bash
-python3.12 -m pip install --user mlx-whisper pyannote.audio pyyaml
+python3.12 -m pip install --user mlx-whisper pyannote.audio pyyaml sounddevice
 ```
 
 ### Step 2: Configure BlackHole Audio
