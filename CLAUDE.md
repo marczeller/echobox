@@ -110,6 +110,86 @@ Key settings:
 - `notify.enabled` and `notify.command`: post-publish notification hook.
 - `transcript_dir`, `enrichment_dir`, `report_dir`, and `log_dir`: overridable storage locations.
 
+## Configure Context Sources (critical for enrichment quality)
+
+Enrichment quality depends entirely on what context the LLM receives alongside the transcript. Your job as an agent is to discover what's available on this specific machine and configure the best sources. **Do not skip this step — without context, the LLM only has raw transcript and produces generic output.**
+
+### Step 1: Probe the machine
+
+Run these checks and note what's available:
+
+```bash
+# Calendar — check in order of preference
+which gws && echo "gws: YES"                                    # Google Workspace CLI
+which gcalcli && echo "gcalcli: YES"                             # gcalcli
+ls ~/Library/Calendars/ 2>/dev/null && echo "Apple Calendar: YES" # native Calendar.app
+osascript -e 'tell application "Calendar" to get name of calendars' 2>/dev/null  # verify access
+
+# Documents — Spotlight indexes everything on macOS
+mdfind -count "kind:document" && echo "mdfind: YES"              # always available on macOS
+
+# Messages
+ls ~/Library/Messages/chat.db 2>/dev/null && echo "Messages.app SQLite: YES"
+ls ~/Library/Group\ Containers/*/store.db 2>/dev/null && echo "Slack local DB: YES"
+
+# Contacts
+osascript -e 'tell application "Contacts" to get name of every person' 2>/dev/null | head -1 && echo "Contacts.app: YES"
+
+# Notes
+osascript -e 'tell application "Notes" to get name of every note' 2>/dev/null | head -1 && echo "Notes.app: YES"
+```
+
+### Step 2: Configure calendar source
+
+Pick the best available option and write it to `config/echobox.yaml`:
+
+| Available | Calendar command to configure |
+|-----------|------------------------------|
+| `gws` | `gws calendar events list --params '{"calendarId":"primary","timeMin":"{date}T00:00:00Z","timeMax":"{date}T23:59:59Z","singleEvents":true}'` |
+| `gcalcli` | `gcalcli agenda "{date} 00:00" "{date} 23:59" --details all --tsv` |
+| Apple Calendar only | `osascript -e 'tell application "Calendar" to set evts to (every event of every calendar whose start date > date "{date}") \n repeat with e in evts \n log (summary of e) & "|" & (start date of e) \n end repeat'` |
+| None | Leave disabled — enrichment will work without calendar, just no attendee matching |
+
+### Step 3: Configure document search
+
+`mdfind` is available on every Mac. Configure it as the default:
+
+```yaml
+context_sources:
+  documents:
+    enabled: true
+    command: "mdfind '{term}' | head -5 | xargs -I{} head -20 '{}' 2>/dev/null"
+```
+
+This searches Notes, PDFs, Word docs, plain text — anything Spotlight indexes. No setup required.
+
+### Step 4: Configure message context (optional)
+
+Only if the user has relevant message databases:
+
+| Available | Configuration |
+|-----------|---------------|
+| Messages.app | `type: sqlite`, `path: ~/Library/Messages/chat.db`, `query: SELECT text FROM message WHERE text LIKE '%{term}%' ORDER BY date DESC LIMIT 10` |
+| Custom CLI | `type: command`, `command: "your-search-tool '{term}'"` |
+| Nothing | Leave disabled |
+
+**Important:** Messages.app SQLite access may require Full Disk Access permission for the terminal app.
+
+### Step 5: Ask the user what they need
+
+After probing, tell the user what you found and ask:
+- "I found Calendar.app and Spotlight on your machine. Want me to enable calendar context and document search?"
+- "I see Messages.app — want me to include recent messages with call attendees as context? (Requires Full Disk Access)"
+- "What kind of calls do you take? (investor, team standup, client) — this helps me set up meeting type patterns"
+
+### Step 6: Verify context works
+
+After configuring, run `./echobox demo --verbose` and check the context stats line:
+- `Context: 0 chars, 0 sections` = broken, nothing was injected
+- `Context: 500 chars, 2 sections` = working, calendar + docs flowing
+
+If zero context, check the calendar command manually: `bash -c "<calendar_command>"` with today's date.
+
 ## Change The Model
 
 If a user says "change the model", do this exactly:
