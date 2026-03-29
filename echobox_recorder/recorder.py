@@ -201,7 +201,12 @@ class EchoboxRecorder:
             )
             pipeline.to(self._diarization_device(torch))
             raw_output = pipeline(str(wav_path))
-            diarization = raw_output.to_annotation() if hasattr(raw_output, 'to_annotation') else raw_output
+            if hasattr(raw_output, 'speaker_diarization'):
+                diarization = raw_output.speaker_diarization
+            elif hasattr(raw_output, 'to_annotation'):
+                diarization = raw_output.to_annotation()
+            else:
+                diarization = raw_output
         except Exception as exc:
             self.logger(f"Diarization unavailable for {wav_path.name}: {exc}")
             return segments
