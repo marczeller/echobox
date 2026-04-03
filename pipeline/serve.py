@@ -19,6 +19,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import urllib.parse
 from pathlib import Path
@@ -89,6 +90,7 @@ class ReportHandler(http.server.BaseHTTPRequestHandler):
     hmac_secret = ""
     report_dir = Path(".")
     failed_attempts: dict[str, tuple[int, float]] = {}
+    _attempts_lock = threading.Lock()
 
     def log_message(self, format, *args):
         pass
@@ -107,24 +109,29 @@ class ReportHandler(http.server.BaseHTTPRequestHandler):
         return getattr(self, "client_address", ("unknown", 0))[0]
 
     def _rate_limit_state(self) -> tuple[int, float]:
-        attempts, locked_until = self.failed_attempts.get(self._client_ip(), (0, 0.0))
-        if locked_until and time.time() >= locked_until:
-            self.failed_attempts.pop(self._client_ip(), None)
-            return 0, 0.0
-        return attempts, locked_until
+        with self._attempts_lock:
+            attempts, locked_until = self.failed_attempts.get(self._client_ip(), (0, 0.0))
+            if locked_until and time.time() >= locked_until:
+                self.failed_attempts.pop(self._client_ip(), None)
+                return 0, 0.0
+            return attempts, locked_until
 
     def _is_rate_limited(self) -> bool:
         _, locked_until = self._rate_limit_state()
         return locked_until > time.time()
 
     def _record_failed_attempt(self) -> None:
-        attempts, _ = self._rate_limit_state()
-        attempts += 1
-        locked_until = time.time() + LOCKOUT_SECONDS if attempts >= MAX_FAILED_ATTEMPTS else 0.0
-        self.failed_attempts[self._client_ip()] = (attempts, locked_until)
+        with self._attempts_lock:
+            attempts, locked_until = self.failed_attempts.get(self._client_ip(), (0, 0.0))
+            if locked_until and time.time() >= locked_until:
+                attempts = 0
+            attempts += 1
+            locked_until = time.time() + LOCKOUT_SECONDS if attempts >= MAX_FAILED_ATTEMPTS else 0.0
+            self.failed_attempts[self._client_ip()] = (attempts, locked_until)
 
     def _clear_failed_attempts(self) -> None:
-        self.failed_attempts.pop(self._client_ip(), None)
+        with self._attempts_lock:
+            self.failed_attempts.pop(self._client_ip(), None)
 
     def _is_authenticated(self) -> bool:
         cookies = self._parse_cookies()
