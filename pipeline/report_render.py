@@ -258,7 +258,7 @@ def render_report(template: str, enrichment: str, transcript: str, title: str, t
     today = today or _datetime.date.today().isoformat()
     rendered = template
     rendered = rendered.replace("{{TITLE}}", f"Call Report: {html.escape(title)}")
-    rendered = rendered.replace("{{DATE}}", today)
+    rendered = rendered.replace("{{DATE}}", html.escape(today))
     rendered = rendered.replace("{{STAT_CARDS}}", render_stat_cards(stats))
     rendered = rendered.replace("{{ENRICHMENT_CONTENT}}", md_to_html(enrichment))
     rendered = rendered.replace("{{TRANSCRIPT_CONTENT}}", render_transcript(transcript))

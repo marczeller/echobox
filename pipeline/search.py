@@ -8,6 +8,8 @@ from pathlib import Path
 
 def scan(directory: Path, label: str, pattern: str, suffixes: tuple[str, ...]) -> int:
     found = 0
+    if not directory.is_dir():
+        return 0
     for path in sorted(directory.iterdir()):
         if not path.is_file() or path.suffix not in suffixes:
             continue
