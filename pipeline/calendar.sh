@@ -13,6 +13,12 @@ if [ -z "$DATE" ]; then
     echo '{"items":[]}'
     exit 0
 fi
+# Validate date format to prevent shell injection via {date} substitution
+if ! echo "$DATE" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
+    echo "Error: invalid date format '$DATE' (expected YYYY-MM-DD)" >&2
+    echo '{"items":[]}'
+    exit 1
+fi
 
 CALENDAR_CMD="${ECHOBOX_CALENDAR_CMD:-}"
 
