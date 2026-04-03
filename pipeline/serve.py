@@ -150,13 +150,13 @@ class ReportHandler(http.server.BaseHTTPRequestHandler):
             "default-src 'self'; style-src 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
         )
 
-    def _send_html(self, html: str, status: int = 200, cache_control: str = "private, no-store") -> None:
+    def _send_html(self, content: str, status: int = 200, cache_control: str = "private, no-store") -> None:
         self.send_response(status)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Cache-Control", cache_control)
         self._set_default_headers()
         self.end_headers()
-        self.wfile.write(html.encode("utf-8"))
+        self.wfile.write(content.encode("utf-8"))
 
     def _normalize_slug(self, raw_path: str) -> str | None:
         parsed = urllib.parse.urlsplit(raw_path)
