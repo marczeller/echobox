@@ -556,7 +556,7 @@ def _fetch_messages(config, workstation, attendee_list, allowed_sources):
                         f'<message_context query="{term}">\n{result[:3000]}\n</message_context>'
                     )
             except Exception as exc:
-                log(f"Message context query failed for '{term}': {exc}")
+                print(f"Message context query failed for '{term}': {exc}", file=sys.stderr)
     else:
         for term in external_attendees[:3]:
             safe_term = term.replace("'", "''").replace('"', '\\"')
