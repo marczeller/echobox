@@ -231,3 +231,6 @@ REPORT_BASENAME="$(basename "$ENRICHMENT" .md)"
 REPORT_SLUG=$(echo "$REPORT_BASENAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g')
 REPORT_FILE="$REPORT_DIR/$REPORT_SLUG/report.html"
 write_pipeline_result "$TRANSCRIPT_ID" "$TRANSCRIPT_FILE" "$ENRICHMENT" "$REPORT_FILE" "$ENRICHMENT_STATUS"
+
+# Wait for async tee process to flush all output to the log file
+wait
