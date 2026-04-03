@@ -559,9 +559,9 @@ def _fetch_messages(config, workstation, attendee_list, allowed_sources):
                 print(f"Message context query failed for '{term}': {exc}", file=sys.stderr)
     else:
         for term in external_attendees[:3]:
-            safe_term = term.replace("'", "''").replace('"', '\\"')
+            safe_term = term.replace("'", "''")
             query = msg_query.replace("{term}", safe_term)
-            result = ssh_run(workstation, f'sqlite3 "{msg_path}" "{query}"', timeout=10)
+            result = ssh_run(workstation, f'sqlite3 {shlex.quote(msg_path)} {shlex.quote(query)}', timeout=10)
             if result and result.strip():
                 sections.append(
                     f'<message_context query="{term}">\n{result[:3000]}\n</message_context>'
