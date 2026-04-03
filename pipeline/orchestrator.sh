@@ -2,7 +2,7 @@
 # Post-call pipeline orchestrator
 # Triggered by echobox watch or manually: orchestrator.sh <transcript_id>
 
-set -e
+set -eo pipefail
 
 ECHOBOX_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 CONFIG="$ECHOBOX_DIR/config/echobox.yaml"
