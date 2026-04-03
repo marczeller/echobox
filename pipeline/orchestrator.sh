@@ -157,8 +157,9 @@ if [ -n "$WORKSTATION" ]; then
     REMOTE_ENRICHMENT="$(basename "$ENRICHED_ENRICHMENT" | sed 's/[^a-zA-Z0-9._-]/_/g')"
     REMOTE_SIDECAR="${REMOTE_ENRICHMENT%.md}.json"
     echo "      Syncing transcript to workstation..."
-    rsync -az "$TRANSCRIPT_FILE" "$WORKSTATION:~/echobox-data/transcripts/$REMOTE_TRANSCRIPT"
-    if ssh -o ConnectTimeout=10 "$WORKSTATION" \
+    if ! rsync -az "$TRANSCRIPT_FILE" "$WORKSTATION:~/echobox-data/transcripts/$REMOTE_TRANSCRIPT"; then
+        use_raw_transcript "rsync to workstation failed — saving raw transcript as $(basename "$RAW_ENRICHMENT")"
+    elif ssh -o ConnectTimeout=10 "$WORKSTATION" \
         "cd ~/echobox && python3 pipeline/enrich.py ~/echobox-data/transcripts/$REMOTE_TRANSCRIPT -o ~/echobox-data/enrichments/$REMOTE_ENRICHMENT"; then
         rsync -az "$WORKSTATION:~/echobox-data/enrichments/$REMOTE_ENRICHMENT" "$ENRICHMENT"
         rsync -az "$WORKSTATION:~/echobox-data/enrichments/$REMOTE_SIDECAR" "${ENRICHMENT%.md}.json" 2>/dev/null || true
