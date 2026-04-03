@@ -170,7 +170,7 @@ publish:
   password: ""
 
   # Server port for echobox serve (default: 8090)
-  serve_port: 8090
+  serve_port: 8091
 
   # Vercel team scope (only needed for vercel platform)
   scope: ""

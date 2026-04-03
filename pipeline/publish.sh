@@ -2,7 +2,7 @@
 # Publish call report as HTML (optionally password-gated on Vercel)
 # Uses Claude CLI (OAuth) to generate designed HTML, or falls back to template.
 
-set -e
+set -eo pipefail
 
 _TMPFILES=()
 cleanup_tmp() { for f in "${_TMPFILES[@]}"; do rm -f "$f"; done; }
@@ -115,7 +115,6 @@ PROMPT_HEADER
     else
         echo "  Claude generation failed, falling back to local template"
     fi
-    rm -f "$PROMPT_FILE"
 fi
 
 if [ "$GENERATED" = false ]; then
