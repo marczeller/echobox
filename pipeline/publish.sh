@@ -42,7 +42,10 @@ resolve_paths() {
     paths_output=$("$ECHOBOX_PYTHON" "$ECHOBOX_DIR/pipeline/read_config.py" paths "$CONFIG" 2>/dev/null || true)
     while IFS='=' read -r key value; do
         [ -n "$key" ] || continue
-        eval "$key=$value"
+        case "$key" in
+            DATA_DIR|TRANSCRIPT_DIR|REPORT_DIR|STATE_DIR)
+                printf -v "$key" '%s' "$value" ;;
+        esac
     done <<EOF
 $paths_output
 EOF
