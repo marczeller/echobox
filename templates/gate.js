@@ -70,7 +70,7 @@ module.exports = async function(req, res) {
         const p = new URLSearchParams(b).get('password') || '';
         if (crypto.timingSafeEqual(Buffer.from(makeToken(p)), Buffer.from(VALID_TOKEN))) {
             res.setHeader('Set-Cookie',
-                `${COOKIE_NAME}=${VALID_TOKEN}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${COOKIE_MAX_AGE}; Secure`);
+                `${COOKIE_NAME}=${VALID_TOKEN}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${COOKIE_MAX_AGE}${req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : ''}`);
             res.writeHead(303, { Location: '/' });
             res.end();
             return;
@@ -80,8 +80,8 @@ module.exports = async function(req, res) {
         return;
     }
 
-    const t = parseCookies(req.headers.cookie)[COOKIE_NAME];
-    if (t === VALID_TOKEN) {
+    const t = parseCookies(req.headers.cookie)[COOKIE_NAME] || '';
+    if (t.length === VALID_TOKEN.length && crypto.timingSafeEqual(Buffer.from(t), Buffer.from(VALID_TOKEN))) {
         const h = fs.readFileSync(path.join(__dirname, '..', 'report.html'), 'utf-8');
         res.setHeader('Content-Type', 'text/html');
         res.setHeader('Cache-Control', 'private, no-cache');
