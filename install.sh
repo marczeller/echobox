@@ -135,9 +135,11 @@ fi
 PYTHON_CMD=""
 for cmd in python3.12 python3 python; do
     if command -v "$cmd" &>/dev/null; then
-        PY_VER=$("$cmd" --version 2>&1 | grep -oE '[0-9]+\.[0-9]+')
+        PY_VER=$("$cmd" --version 2>&1 | grep -oE '[0-9]+\.[0-9]+' || true)
         PY_MAJOR=$(echo "$PY_VER" | cut -d. -f1)
         PY_MINOR=$(echo "$PY_VER" | cut -d. -f2)
+        [ -z "$PY_MAJOR" ] && continue
+        [ -z "$PY_MINOR" ] && continue
         if [ "$PY_MAJOR" -ge 3 ] && [ "$PY_MINOR" -ge 12 ]; then
             PYTHON_CMD="$cmd"
             break
