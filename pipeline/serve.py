@@ -173,8 +173,8 @@ class ReportHandler(http.server.BaseHTTPRequestHandler):
         return slug
 
     def _send_login(self, wrong: bool = False):
-        html = LOGIN_HTML.replace("WRONG_MSG", "Wrong password." if wrong else "")
-        self._send_html(html)
+        page = LOGIN_HTML.replace("WRONG_MSG", "Wrong password." if wrong else "")
+        self._send_html(page)
 
     def _send_rate_limited(self) -> None:
         self.send_response(429)
