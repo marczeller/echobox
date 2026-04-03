@@ -253,6 +253,9 @@ class EchoboxWatcher:
         transcript_path = self.recorder.stop()
         self.on_meeting_end(transcript_path)
 
+    def reset_activity_timer(self) -> None:
+        self._last_seen_active = time.monotonic()
+
     def poll_once(self) -> None:
         if self.paused:
             return

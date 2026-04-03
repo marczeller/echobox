@@ -3,7 +3,6 @@ from __future__ import annotations
 import signal
 import subprocess
 import threading
-import time
 from pathlib import Path
 from typing import Callable
 
@@ -84,25 +83,32 @@ class EchoboxMenuBar(rumps.App):
 
     @rumps.timer(3)
     def _tick(self, _sender) -> None:
+        # _tick fires on the main AppKit thread — safe for UI updates.
+        # Check if the background poll changed state and update UI accordingly.
+        self._update_ui()
+        if self._recording_just_ended:
+            self._recording_just_ended = False
+            self._refresh_recents()
+            self._refresh_reports()
+        # Kick off next poll in background if not already running
+        if self._poll_lock.locked():
+            return
         was_active = self.watcher.recorder.active
-        # Run poll_once in a background thread so osascript calls
-        # don't freeze the menu bar UI
         thread = threading.Thread(
-            target=self._poll_and_update, args=(was_active,), daemon=True
+            target=self._poll_background, args=(was_active,), daemon=True
         )
         thread.start()
 
-    def _poll_and_update(self, was_active: bool) -> None:
+    _recording_just_ended = False
+
+    def _poll_background(self, was_active: bool) -> None:
         with self._poll_lock:
             try:
                 self.watcher.poll_once()
             except Exception as exc:
                 self.watcher.logger(f"Poll error: {exc}")
-        # Schedule UI update back on main thread
-        self._update_ui()
-        if was_active and not self.watcher.recorder.active:
-            self._refresh_recents()
-            self._refresh_reports()
+            if was_active and not self.watcher.recorder.active:
+                self._recording_just_ended = True
 
     # --- UI updates ---
 
@@ -128,9 +134,9 @@ class EchoboxMenuBar(rumps.App):
     def _toggle_pause(self, _sender) -> None:
         self.watcher.paused = not self.watcher.paused
         if not self.watcher.paused:
-            # Reset last_seen_active on resume to prevent immediate stop
+            # Reset activity timer on resume to prevent immediate stop
             # of an active recording due to stale timestamp
-            self.watcher._last_seen_active = time.monotonic()
+            self.watcher.reset_activity_timer()
         self.watcher.logger(
             "Watcher paused" if self.watcher.paused else "Watcher resumed"
         )
