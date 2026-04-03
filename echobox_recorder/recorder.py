@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import threading
 import wave
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -75,6 +76,7 @@ class EchoboxRecorder:
         self.audio_device = audio_device
         self.logger = logger or (lambda _message: None)
         self._chunks: list[bytes] = []
+        self._chunks_lock = threading.Lock()
         self._session: RecordingSession | None = None
 
     @property
@@ -101,7 +103,8 @@ class EchoboxRecorder:
     def _stream_callback(self, indata, frames, time_info, status) -> None:  # noqa: ANN001
         if status:
             self.logger(f"Recorder warning: {status}")
-        self._chunks.append(bytes(indata))
+        with self._chunks_lock:
+            self._chunks.append(bytes(indata))
 
     def _create_stream(self, device: int | str | None):
         sd = _import_sounddevice()
@@ -140,11 +143,13 @@ class EchoboxRecorder:
         return self._session
 
     def _write_wav(self, wav_path: Path) -> None:
+        with self._chunks_lock:
+            chunks = list(self._chunks)
         with wave.open(str(wav_path), "wb") as handle:
             handle.setnchannels(self.channels)
             handle.setsampwidth(2)
             handle.setframerate(self.sample_rate)
-            for chunk in self._chunks:
+            for chunk in chunks:
                 handle.writeframes(chunk)
 
     def _transcribe_wav(self, wav_path: Path) -> dict[str, Any]:
