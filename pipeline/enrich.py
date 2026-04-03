@@ -546,17 +546,17 @@ def _fetch_messages(config, workstation, attendee_list, allowed_sources):
         import sqlite3 as sqlite3_mod
         for term in external_attendees[:3]:
             try:
-                conn = sqlite3_mod.connect(os.path.expanduser(msg_path))
-                query = msg_query.replace("{term}", term.replace("'", "''"))
-                rows = conn.execute(query).fetchall()
-                conn.close()
+                safe_term = term.replace("'", "''")
+                query = msg_query.replace("{term}", safe_term)
+                with sqlite3_mod.connect(os.path.expanduser(msg_path)) as conn:
+                    rows = conn.execute(query).fetchall()
                 result = "\n".join("|".join(str(c) for c in row) for row in rows)
                 if result.strip():
                     sections.append(
                         f'<message_context query="{term}">\n{result[:3000]}\n</message_context>'
                     )
-            except Exception:
-                pass
+            except Exception as exc:
+                log(f"Message context query failed for '{term}': {exc}")
     else:
         for term in external_attendees[:3]:
             safe_term = term.replace("'", "''").replace('"', '\\"')
