@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from echobox_recorder import EchoboxRecorder
+from echobox_recorder import EchoboxMenuBar
 from echobox_recorder import EchoboxWatcher
 
 from pipeline import actions as actions_module
@@ -399,6 +400,21 @@ def cmd_watch(ctx: AppContext, _args: argparse.Namespace) -> int:
         logger=emit,
     )
     watcher = EchoboxWatcher(recorder, on_meeting_end=on_meeting_end, logger=emit)
+
+    use_menubar = (
+        EchoboxMenuBar is not None
+        and not os.environ.get("ECHOBOX_HEADLESS")
+    )
+    if use_menubar:
+        emit("Watcher ready")
+        app = EchoboxMenuBar(
+            watcher,
+            transcript_dir=ctx.transcript_dir,
+            report_dir=ctx.report_dir,
+        )
+        app.run()
+        return 0
+
     return watcher.run_forever()
 
 

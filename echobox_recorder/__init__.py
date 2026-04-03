@@ -12,4 +12,9 @@ Derived from an MIT-licensed upstream recorder and adapted for Echobox:
 from .recorder import EchoboxRecorder
 from .watcher import EchoboxWatcher
 
-__all__ = ["EchoboxRecorder", "EchoboxWatcher"]
+try:
+    from .menubar import EchoboxMenuBar
+except ImportError:
+    EchoboxMenuBar = None  # type: ignore[assignment,misc]
+
+__all__ = ["EchoboxRecorder", "EchoboxWatcher", "EchoboxMenuBar"]

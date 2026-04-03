@@ -112,6 +112,7 @@ class EchoboxWatcher:
         self._last_seen_active = 0.0
         self._pending_detection: DetectionResult | None = None
         self._pending_since = 0.0
+        self.paused = False
 
     def _run_osascript(self, script: str) -> str:
         try:
@@ -252,25 +253,30 @@ class EchoboxWatcher:
         transcript_path = self.recorder.stop()
         self.on_meeting_end(transcript_path)
 
+    def poll_once(self) -> None:
+        if self.paused:
+            return
+
+        detection = self.detect_meeting()
+        now = time.monotonic()
+
+        if detection is not None:
+            self._last_seen_active = now
+            if self.recorder.active:
+                self._clear_pending_detection()
+            elif self._cooldown_elapsed(detection, now):
+                self._start_recording(detection)
+                self._clear_pending_detection()
+        else:
+            self._clear_pending_detection()
+            if self.recorder.active and (now - self._last_seen_active) >= self.stop_grace_period:
+                self._stop_recording()
+
     def run_forever(self) -> int:
         self.logger("Watcher ready")
         try:
             while True:
-                detection = self.detect_meeting()
-                now = time.monotonic()
-
-                if detection is not None:
-                    self._last_seen_active = now
-                    if self.recorder.active:
-                        self._clear_pending_detection()
-                    elif self._cooldown_elapsed(detection, now):
-                        self._start_recording(detection)
-                        self._clear_pending_detection()
-                else:
-                    self._clear_pending_detection()
-                    if self.recorder.active and (now - self._last_seen_active) >= self.stop_grace_period:
-                        self._stop_recording()
-
+                self.poll_once()
                 time.sleep(self.poll_interval)
         except KeyboardInterrupt:
             self.logger("Watcher stopped")
