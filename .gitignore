@@ -38,3 +38,5 @@ quality/composite-score.sh
 
 # Temp
 /tmp/
+autoresearch-verify.sh
+autoresearch-results.tsv
