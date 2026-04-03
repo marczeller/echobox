@@ -1,6 +1,6 @@
 #!/bin/bash
 # Echobox repo quality metric — higher is better, target: 20/20
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || { echo "FATAL: cannot cd to repo root" >&2; exit 1; }
 SCORE=0
 
 # 1. README has quick start with 3 or fewer steps
