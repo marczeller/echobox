@@ -3,6 +3,10 @@ const path = require('path');
 const crypto = require('crypto');
 
 const PASSWORD = process.env.ECHOBOX_REPORT_PASSWORD || 'ECHOBOX_DEFAULT_PASSWORD';
+if (PASSWORD === 'ECHOBOX_DEFAULT_PASSWORD') {
+    console.error('ERROR: No password set. Set ECHOBOX_REPORT_PASSWORD or configure publish.password in echobox.yaml.');
+    process.exit(1);
+}
 const COOKIE_NAME = 'echobox_report';
 const COOKIE_MAX_AGE = 86400 * 7;
 
