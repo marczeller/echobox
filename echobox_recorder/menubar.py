@@ -35,6 +35,7 @@ class EchoboxMenuBar(rumps.App):
         self._skip_item = rumps.MenuItem("Skip This Meeting", callback=self._skip_meeting)
         self._skip_item.set_callback(None)  # disabled until recording
         self._recents_menu = rumps.MenuItem("Recent Transcripts")
+        self._reports_menu = rumps.MenuItem("Recent Reports")
         self._open_transcripts = rumps.MenuItem(
             "Open Transcripts Folder", callback=self._open_transcript_dir
         )
@@ -50,6 +51,7 @@ class EchoboxMenuBar(rumps.App):
             self._skip_item,
             None,
             self._recents_menu,
+            self._reports_menu,
             self._open_transcripts,
             self._open_reports,
             None,
@@ -57,6 +59,7 @@ class EchoboxMenuBar(rumps.App):
         ]
 
         self._populate_recents()
+        self._populate_reports()
 
     @rumps.timer(3)
     def _tick(self, _sender) -> None:
@@ -65,6 +68,7 @@ class EchoboxMenuBar(rumps.App):
         self._update_ui()
         if was_active and not self.watcher.recorder.active:
             self._refresh_recents()
+            self._refresh_reports()
 
     def _update_ui(self) -> None:
         if self.watcher.paused:
@@ -139,6 +143,32 @@ class EchoboxMenuBar(rumps.App):
             name = path.stem
             item = rumps.MenuItem(name, callback=self._make_open_callback(path))
             self._recents_menu.add(item)
+
+    def _populate_reports(self) -> None:
+        self._refresh_reports(clear=False)
+
+    def _refresh_reports(self, clear: bool = True) -> None:
+        if clear:
+            self._reports_menu.clear()
+        try:
+            reports = sorted(
+                self.report_dir.glob("*/report.html"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )[:5]
+        except OSError:
+            reports = []
+
+        if not reports:
+            item = rumps.MenuItem("No reports yet", callback=None)
+            item.set_callback(None)
+            self._reports_menu.add(item)
+            return
+
+        for path in reports:
+            name = path.parent.name
+            item = rumps.MenuItem(name, callback=self._make_open_callback(path))
+            self._reports_menu.add(item)
 
     def _make_open_callback(self, path: Path):
         def _open(_sender):

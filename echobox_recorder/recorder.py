@@ -50,13 +50,6 @@ def preferred_input_device(sd_module: Any | None = None) -> int | str | None:
     except Exception:
         return default_input
 
-    for index, device in enumerate(devices):
-        if (
-            isinstance(device, dict)
-            and "BlackHole" in str(device.get("name", ""))
-            and int(device.get("max_input_channels", 0) or 0) > 0
-        ):
-            return index
     return default_input
 
 
