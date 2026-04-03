@@ -23,7 +23,7 @@ fi
 CALENDAR_CMD="${ECHOBOX_CALENDAR_CMD:-}"
 
 if [ -n "$CALENDAR_CMD" ]; then
-    CMD=$(echo "$CALENDAR_CMD" | sed "s|{date}|$DATE|g")
+    CMD="${CALENDAR_CMD//\{date\}/$DATE}"
     bash -c "$CMD" 2>/dev/null || echo '{"items":[]}'
 else
     echo "Warning: no calendar command configured" >&2
