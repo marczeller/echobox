@@ -147,9 +147,11 @@ if [ "$PUBLISH_PLATFORM" = "vercel" ] && command -v vercel &>/dev/null; then
     GATE_JS="$ECHOBOX_DIR/templates/gate.js"
     if [ -f "$GATE_JS" ]; then
         $ECHOBOX_PYTHON -c "
-import sys
+import json, sys
 content = open(sys.argv[1]).read()
-password = sys.argv[2].replace('\\', '\\\\').replace(\"'\", \"\\'\")
+# JSON-encode the password to safely escape all special characters,
+# then strip the surrounding quotes since the template already has them
+password = json.dumps(sys.argv[2])[1:-1]
 print(content.replace('ECHOBOX_DEFAULT_PASSWORD', password))
 " "$GATE_JS" "$PUBLISH_PASSWORD" > "$SITE_DIR/api/gate.js"
     fi
