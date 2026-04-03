@@ -4,6 +4,10 @@
 
 set -e
 
+_TMPFILES=()
+cleanup_tmp() { for f in "${_TMPFILES[@]}"; do rm -f "$f"; done; }
+trap cleanup_tmp EXIT
+
 ECHOBOX_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 DATA_DIR="$HOME/echobox-data"
 STATE_DIR="$DATA_DIR"
@@ -83,6 +87,7 @@ GENERATED=false
 if [ "$PUBLISH_ENGINE" = "claude" ] && command -v claude &>/dev/null; then
     echo "Generating HTML with Claude CLI (content sent to Anthropic API)..."
     PROMPT_FILE=$(mktemp)
+    _TMPFILES+=("$PROMPT_FILE")
     cat > "$PROMPT_FILE" << 'PROMPT_HEADER'
 Generate a single-file HTML call report. Output ONLY valid HTML from <!DOCTYPE html> to </html>.
 Design system: bg #08080c, cards #111118, text #ece8e0, dim #6a665e, accent #c62828.
