@@ -26,6 +26,8 @@ from pathlib import Path
 DEFAULT_PORT = 8090
 COOKIE_NAME = "echobox_auth"
 COOKIE_MAX_AGE = 86400 * 7
+MAX_FAILED_ATTEMPTS = 5
+LOCKOUT_SECONDS = 60
 SLUG_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
@@ -86,6 +88,7 @@ class ReportHandler(http.server.BaseHTTPRequestHandler):
     password = ""
     hmac_secret = ""
     report_dir = Path(".")
+    failed_attempts: dict[str, tuple[int, float]] = {}
 
     def log_message(self, format, *args):
         pass
@@ -99,6 +102,29 @@ class ReportHandler(http.server.BaseHTTPRequestHandler):
                 k, v = part.split("=", 1)
                 cookies[k.strip()] = v.strip()
         return cookies
+
+    def _client_ip(self) -> str:
+        return getattr(self, "client_address", ("unknown", 0))[0]
+
+    def _rate_limit_state(self) -> tuple[int, float]:
+        attempts, locked_until = self.failed_attempts.get(self._client_ip(), (0, 0.0))
+        if locked_until and time.time() >= locked_until:
+            self.failed_attempts.pop(self._client_ip(), None)
+            return 0, 0.0
+        return attempts, locked_until
+
+    def _is_rate_limited(self) -> bool:
+        _, locked_until = self._rate_limit_state()
+        return locked_until > time.time()
+
+    def _record_failed_attempt(self) -> None:
+        attempts, _ = self._rate_limit_state()
+        attempts += 1
+        locked_until = time.time() + LOCKOUT_SECONDS if attempts >= MAX_FAILED_ATTEMPTS else 0.0
+        self.failed_attempts[self._client_ip()] = (attempts, locked_until)
+
+    def _clear_failed_attempts(self) -> None:
+        self.failed_attempts.pop(self._client_ip(), None)
 
     def _is_authenticated(self) -> bool:
         cookies = self._parse_cookies()
@@ -142,6 +168,15 @@ class ReportHandler(http.server.BaseHTTPRequestHandler):
     def _send_login(self, wrong: bool = False):
         html = LOGIN_HTML.replace("WRONG_MSG", "Wrong password." if wrong else "")
         self._send_html(html)
+
+    def _send_rate_limited(self) -> None:
+        self.send_response(429)
+        self.send_header("Retry-After", str(LOCKOUT_SECONDS))
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Cache-Control", "private, no-store")
+        self._set_default_headers()
+        self.end_headers()
+        self.wfile.write(b"Too many failed login attempts. Try again later.")
 
     def _send_report_list(self):
         reports = []
@@ -213,6 +248,9 @@ class ReportHandler(http.server.BaseHTTPRequestHandler):
         if parsed.path != "/" or parsed.query or parsed.fragment:
             self.send_error(404)
             return
+        if self._is_rate_limited():
+            self._send_rate_limited()
+            return
 
         try:
             content_length = int(self.headers.get("Content-Length", 0))
@@ -232,6 +270,7 @@ class ReportHandler(http.server.BaseHTTPRequestHandler):
         valid_token = make_token(self.password, self.hmac_secret)
 
         if hmac.compare_digest(make_token(submitted, self.hmac_secret), valid_token):
+            self._clear_failed_attempts()
             self.send_response(303)
             self.send_header("Location", "/")
             self.send_header(
@@ -242,6 +281,7 @@ class ReportHandler(http.server.BaseHTTPRequestHandler):
             self._set_default_headers()
             self.end_headers()
         else:
+            self._record_failed_attempt()
             self._send_login(wrong=True)
 
 
