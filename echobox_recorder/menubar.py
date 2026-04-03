@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-import os
+import signal
 import subprocess
+import threading
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -28,6 +30,7 @@ class EchoboxMenuBar(rumps.App):
         self.transcript_dir = transcript_dir
         self.report_dir = report_dir
         self._on_quit = on_quit
+        self._poll_lock = threading.Lock()
 
         self._status_item = rumps.MenuItem("Idle", callback=None)
         self._status_item.set_callback(None)
@@ -61,14 +64,47 @@ class EchoboxMenuBar(rumps.App):
         self._populate_recents()
         self._populate_reports()
 
+        # Handle SIGTERM for clean shutdown (launchd sends this)
+        signal.signal(signal.SIGTERM, self._handle_signal)
+
+    def _handle_signal(self, signum, frame) -> None:
+        self._cleanup_recording()
+        rumps.quit_app()
+
+    def _cleanup_recording(self) -> None:
+        if self.watcher.recorder.active:
+            self.watcher.logger("Stopping active recording on shutdown...")
+            try:
+                transcript_path = self.watcher.recorder.stop()
+                self.watcher.on_meeting_end(transcript_path)
+            except Exception as exc:
+                self.watcher.logger(f"Error during shutdown cleanup: {exc}")
+
+    # --- Polling in background thread to avoid blocking AppKit ---
+
     @rumps.timer(3)
     def _tick(self, _sender) -> None:
         was_active = self.watcher.recorder.active
-        self.watcher.poll_once()
+        # Run poll_once in a background thread so osascript calls
+        # don't freeze the menu bar UI
+        thread = threading.Thread(
+            target=self._poll_and_update, args=(was_active,), daemon=True
+        )
+        thread.start()
+
+    def _poll_and_update(self, was_active: bool) -> None:
+        with self._poll_lock:
+            try:
+                self.watcher.poll_once()
+            except Exception as exc:
+                self.watcher.logger(f"Poll error: {exc}")
+        # Schedule UI update back on main thread
         self._update_ui()
         if was_active and not self.watcher.recorder.active:
             self._refresh_recents()
             self._refresh_reports()
+
+    # --- UI updates ---
 
     def _update_ui(self) -> None:
         if self.watcher.paused:
@@ -91,6 +127,10 @@ class EchoboxMenuBar(rumps.App):
 
     def _toggle_pause(self, _sender) -> None:
         self.watcher.paused = not self.watcher.paused
+        if not self.watcher.paused:
+            # Reset last_seen_active on resume to prevent immediate stop
+            # of an active recording due to stale timestamp
+            self.watcher._last_seen_active = time.monotonic()
         self.watcher.logger(
             "Watcher paused" if self.watcher.paused else "Watcher resumed"
         )
@@ -101,10 +141,8 @@ class EchoboxMenuBar(rumps.App):
             return
         session = self.watcher.recorder._session
         self.watcher.logger(f"Skipping meeting: {session.transcript_id if session else 'unknown'}")
-        # Stop recording and discard
         try:
             transcript_path = self.watcher.recorder.stop()
-            # Remove the transcript and wav files
             transcript_path.unlink(missing_ok=True)
             wav_path = transcript_path.with_suffix(".wav")
             wav_path.unlink(missing_ok=True)
@@ -112,11 +150,15 @@ class EchoboxMenuBar(rumps.App):
             self.watcher.logger(f"Error skipping: {exc}")
         self._update_ui()
 
+    # --- Folder actions ---
+
     def _open_transcript_dir(self, _sender) -> None:
         subprocess.Popen(["open", str(self.transcript_dir)])
 
     def _open_report_dir(self, _sender) -> None:
         subprocess.Popen(["open", str(self.report_dir)])
+
+    # --- Recent items ---
 
     def _populate_recents(self) -> None:
         self._refresh_recents(clear=False)
@@ -175,14 +217,10 @@ class EchoboxMenuBar(rumps.App):
             subprocess.Popen(["open", str(path)])
         return _open
 
+    # --- Quit ---
+
     def _quit(self, _sender) -> None:
-        if self.watcher.recorder.active:
-            self.watcher.logger("Stopping active recording before quit...")
-            try:
-                transcript_path = self.watcher.recorder.stop()
-                self.watcher.on_meeting_end(transcript_path)
-            except Exception:
-                pass
+        self._cleanup_recording()
         if self._on_quit:
             self._on_quit()
         rumps.quit_app()

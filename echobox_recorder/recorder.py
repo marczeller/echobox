@@ -35,22 +35,16 @@ def slugify_hint(value: str) -> str:
 
 
 def preferred_input_device(sd_module: Any | None = None) -> int | str | None:
+    """Return the system default input device."""
     sd = sd_module or _import_sounddevice()
-    default_input = None
     try:
         default = getattr(sd, "default", None)
         device_pair = getattr(default, "device", None) if default is not None else None
         if isinstance(device_pair, (list, tuple)) and device_pair:
-            default_input = device_pair[0]
+            return device_pair[0]
     except Exception:
-        default_input = None
-
-    try:
-        devices = sd.query_devices()
-    except Exception:
-        return default_input
-
-    return default_input
+        pass
+    return None
 
 
 @dataclass
