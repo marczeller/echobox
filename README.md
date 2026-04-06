@@ -27,6 +27,8 @@ After setup, the watcher and pipeline can run automatically from call end throug
 
 Audio is streamed directly to disk during recording, so long calls don't accumulate memory pressure. The watcher recovers from transient errors without restarting, and enrichment input is capped to prevent OOM on very long transcripts.
 
+**Expect fan noise during processing.** Transcription and LLM enrichment run entirely on-device using MLX/Metal, which pushes your Apple Silicon hard. The fans spinning up after a call ends is normal — it means your data is being processed locally and privately, never leaving your machine. This is the trade-off for full local processing: your hardware does the work that a cloud service would otherwise handle.
+
 After the call: `echobox list` to browse, `echobox open` to view the report, `echobox search "topic"` to find past discussions, `echobox actions` to see all outstanding action items across calls.
 
 ## Why Use It
