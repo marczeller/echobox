@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import wave
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -654,6 +655,76 @@ def cmd_demo(ctx: AppContext, _args: argparse.Namespace) -> int:
     )
 
 
+def cmd_transcribe(ctx: AppContext, args: argparse.Namespace) -> int:
+    wav_input = Path(args.wav_file).expanduser().resolve()
+    if not wav_input.is_file():
+        print(f"Error: WAV file not found: {wav_input}", file=sys.stderr)
+        return 1
+
+    # Check if resampling is needed
+    probe = subprocess.run(
+        ["ffmpeg", "-i", str(wav_input)],
+        capture_output=True,
+        text=True,
+    )
+    probe_output = probe.stderr  # ffmpeg prints info to stderr
+    needs_resample = True
+    if "16000 Hz" in probe_output and "mono" in probe_output:
+        needs_resample = False
+
+    if needs_resample:
+        print(f"Resampling to mono 16kHz...", flush=True)
+        resampled = wav_input.parent / f"{wav_input.stem}_16k.wav"
+        rc = subprocess.run(
+            ["ffmpeg", "-y", "-i", str(wav_input), "-ar", "16000", "-ac", "1", str(resampled)],
+            capture_output=True,
+        ).returncode
+        if rc != 0:
+            print("Error: ffmpeg resampling failed", file=sys.stderr)
+            return 1
+        work_path = resampled
+    else:
+        work_path = wav_input
+
+    recorder = EchoboxRecorder(
+        output_dir=ctx.transcript_dir,
+        whisper_model=get_config(ctx.config, "whisper_model", "mlx-community/whisper-large-v3-mlx"),
+        logger=lambda msg: print(msg),
+    )
+
+    print(f"Transcribing: {wav_input.name}", flush=True)
+    result = recorder._transcribe_wav(work_path)
+    if isinstance(result, dict):
+        result["_wav_path"] = str(work_path)
+
+    # Use file modification time as a proxy for recording start
+    from datetime import datetime
+    started_at = datetime.fromtimestamp(wav_input.stat().st_mtime).astimezone()
+
+    # Estimate duration from WAV file
+    try:
+        with wave.open(str(work_path), "rb") as wf:
+            frames = wf.getnframes()
+            rate = wf.getframerate()
+            duration_seconds = max(1, frames // rate)
+    except Exception:
+        duration_seconds = 0
+
+    transcript_body = recorder._format_transcript(started_at, duration_seconds, result)
+
+    transcript_name = f"{wav_input.stem}.txt"
+    transcript_path = ctx.transcript_dir / transcript_name
+    transcript_path.parent.mkdir(parents=True, exist_ok=True)
+    transcript_path.write_text(transcript_body, encoding="utf-8")
+
+    # Clean up resampled file
+    if needs_resample and work_path != wav_input and work_path.exists():
+        work_path.unlink()
+
+    print(f"Transcript saved: {transcript_path}")
+    return 0
+
+
 def cmd_serve(ctx: AppContext, args: argparse.Namespace) -> int:
     from pipeline.serve import start_server
     password = ctx.config.get("publish.password", "")
@@ -684,6 +755,7 @@ Daily use:
   echobox summary [N|--month] Summary of calls, decisions, actions
 
 Pipeline:
+  echobox transcribe <wav>    Transcribe a WAV file with Whisper + optional diarization
   echobox enrich <file>       Run LLM enrichment on a transcript
   echobox publish <file>      Generate HTML report from enrichment
   echobox reprocess <name>    Re-enrich and re-publish a call
@@ -739,6 +811,8 @@ def build_parser() -> argparse.ArgumentParser:
     serve_parser = subparsers.add_parser("serve", add_help=False)
     serve_parser.add_argument("--port", type=int, default=8090)
     serve_parser.add_argument("--tunnel", choices=["tailscale", "bore", ""], default="")
+    transcribe_parser = subparsers.add_parser("transcribe", add_help=False)
+    transcribe_parser.add_argument("wav_file")
     subparsers.add_parser("version", add_help=False)
     subparsers.add_parser("help", add_help=False)
     return parser
@@ -781,6 +855,7 @@ def main(argv: list[str] | None = None) -> int:
         "status": cmd_status,
         "summary": cmd_summary,
         "test": cmd_test,
+        "transcribe": cmd_transcribe,
         "version": cmd_version,
         "watch": cmd_watch,
     }

@@ -13,7 +13,7 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 STEP_NUM=0
-TOTAL_STEPS=10
+TOTAL_STEPS=9
 
 ok()   { echo -e "  ${GREEN}[ok]${NC} $1"; }
 warn() { echo -e "  ${YELLOW}[!!]${NC} $1"; }
@@ -152,6 +152,14 @@ if [ -z "$PYTHON_CMD" ]; then
     ERRORS=$((ERRORS + 1))
 else
     ok "Python $($PYTHON_CMD --version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')"
+
+    if [ ! -d "$ECHOBOX_DIR/.venv" ]; then
+        echo "    Creating virtual environment in $ECHOBOX_DIR/.venv"
+        "$PYTHON_CMD" -m venv "$ECHOBOX_DIR/.venv"
+    fi
+    PYTHON_CMD="$ECHOBOX_DIR/.venv/bin/python"
+    "$PYTHON_CMD" -m pip install --upgrade pip >/dev/null 2>&1
+    ok "Using venv: $ECHOBOX_DIR/.venv"
 fi
 
 step "Checking Python packages"
@@ -192,16 +200,6 @@ else
         "Requires accepting the pyannote model license and setting HF_TOKEN: https://huggingface.co/pyannote/speaker-diarization-3.1"
 fi
 
-fi
-
-step "Checking BlackHole audio driver"
-
-if system_profiler SPAudioDataType 2>/dev/null | grep -q "BlackHole"; then
-    ok "BlackHole audio driver detected"
-else
-    warn "BlackHole not found — install: brew install blackhole-2ch"
-    echo "    BlackHole captures system audio for recording."
-    echo "    After install, create a Multi-Output Device in Audio MIDI Setup."
 fi
 
 step "Checking HuggingFace token (for pyannote speaker diarization)"
@@ -311,6 +309,8 @@ else
     <string>${PLIST_LABEL}</string>
     <key>ProgramArguments</key>
     <array>
+        <string>/bin/bash</string>
+        <string>${ECHOBOX_DIR}/scripts/run-echobox.sh</string>
         <string>${ECHOBOX_DIR}/echobox</string>
         <string>watch</string>
     </array>

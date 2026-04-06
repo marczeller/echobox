@@ -13,8 +13,8 @@ whisper_model: mlx-community/whisper-large-v3-mlx
 # --- LLM enrichment model ---
 mlx_model: mlx-community/Qwen3-Next-80B-A3B-Instruct-6bit
 mlx_url: http://localhost:8090/v1/chat/completions
-# Start the MLX server before enrichment:
-#   mlx_lm.server --model <model_name> --port 8090
+# Install the MLX server:  pip install mlx-lm
+# Start before enrichment: python -m mlx_lm server --model <model_name> --port 8090
 mlx_timeout_seconds: 600
 # Increase this on slower machines or with larger prompts/models.
 
@@ -52,10 +52,11 @@ log_dir: ~/echobox-data/logs
 context_sources:
   # Calendar events (primary signal for meeting classification)
   calendar:
-    enabled: true
+    enabled: false
     # Command that returns JSON with an "items" array of calendar events.
     # The {date} placeholder is replaced with YYYY-MM-DD.
-    command: "your-calendar-cli events list --date {date} --format json"
+    command: ""
+    # command: "your-calendar-cli events list --date {date} --format json"
     # Example with Google Calendar CLI:
     # command: "gcalcli agenda '{date} 00:00' '{date} 23:59' --details all --tsv"
     # If your CLI needs fragile nested quoting, prefer command_args:

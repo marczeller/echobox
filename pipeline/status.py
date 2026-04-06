@@ -32,20 +32,6 @@ def module_importable(name: str) -> bool:
         return False
 
 
-def is_blackhole_configured() -> bool:
-    try:
-        result = subprocess.run(
-            ["system_profiler", "SPAudioDataType"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            check=False,
-        )
-    except Exception:
-        return False
-    return "BlackHole" in result.stdout
-
-
 def can_reach_models(mlx_url: str) -> bool:
     models_url = mlx_url.removesuffix("/chat/completions") + "/models"
     try:
@@ -169,13 +155,6 @@ def main() -> int:
         ready = False
         issues.append("  - Install pyannote.audio: python3 -m pip install --user pyannote.audio")
         issues.append("    Then accept the model license and set HF_TOKEN")
-
-    if is_blackhole_configured():
-        print("  BlackHole:      detected")
-    else:
-        print("  BlackHole:      NOT CONFIGURED")
-        ready = False
-        issues.append("  - Install BlackHole: brew install blackhole-2ch")
 
     mlx_url = config.get("mlx_url", "http://localhost:8090/v1/chat/completions")
     if can_reach_models(mlx_url):
