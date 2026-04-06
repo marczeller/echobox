@@ -279,7 +279,10 @@ class EchoboxWatcher:
         self.logger("Watcher ready")
         try:
             while True:
-                self.poll_once()
+                try:
+                    self.poll_once()
+                except Exception as exc:
+                    self.logger(f"Watcher poll failed: {exc}")
                 time.sleep(self.poll_interval)
         except KeyboardInterrupt:
             self.logger("Watcher stopped")

@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -363,6 +364,8 @@ def cmd_quality(ctx: AppContext, _args: argparse.Namespace) -> int:
 
 def cmd_watch(ctx: AppContext, _args: argparse.Namespace) -> int:
     watcher_log = ctx.log_dir / "watcher.log"
+    child_processes: list[subprocess.Popen] = []
+    child_lock = threading.Lock()
     try:
         watcher_log.parent.mkdir(parents=True, exist_ok=True)
         with watcher_log.open("a", encoding="utf-8") as log_handle:
@@ -378,6 +381,19 @@ def cmd_watch(ctx: AppContext, _args: argparse.Namespace) -> int:
     print("Press Ctrl+C to stop.")
     print("")
 
+    def reap_children() -> None:
+        with child_lock:
+            alive: list[subprocess.Popen] = []
+            for child in child_processes:
+                if child.poll() is None:
+                    alive.append(child)
+                    continue
+                try:
+                    child.wait(timeout=0)
+                except Exception:
+                    pass
+            child_processes[:] = alive
+
     def emit(message: str) -> None:
         print(message)
         try:
@@ -386,13 +402,25 @@ def cmd_watch(ctx: AppContext, _args: argparse.Namespace) -> int:
         except OSError:
             pass
 
+    stop_reaper = threading.Event()
+
+    def reap_children_forever() -> None:
+        while not stop_reaper.wait(5):
+            reap_children()
+
+    reaper_thread = threading.Thread(target=reap_children_forever, daemon=True)
+    reaper_thread.start()
+
     def on_meeting_end(transcript_path: Path) -> None:
+        reap_children()
         emit(f"Meeting ended: {transcript_path.name}")
-        subprocess.Popen(
+        child = subprocess.Popen(
             ["bash", str(ctx.repo_dir / "pipeline" / "orchestrator.sh"), transcript_path.stem],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
+        with child_lock:
+            child_processes.append(child)
 
     recorder = EchoboxRecorder(
         output_dir=ctx.transcript_dir,
@@ -412,10 +440,20 @@ def cmd_watch(ctx: AppContext, _args: argparse.Namespace) -> int:
             transcript_dir=ctx.transcript_dir,
             report_dir=ctx.report_dir,
         )
-        app.run()
-        return 0
+        try:
+            app.run()
+            return 0
+        finally:
+            stop_reaper.set()
+            reaper_thread.join(timeout=1)
+            reap_children()
 
-    return watcher.run_forever()
+    try:
+        return watcher.run_forever()
+    finally:
+        stop_reaper.set()
+        reaper_thread.join(timeout=1)
+        reap_children()
 
 
 def cmd_list(ctx: AppContext, _args: argparse.Namespace) -> int:

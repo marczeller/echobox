@@ -21,6 +21,7 @@ from pathlib import Path
 
 DEFAULT_CONFIG = Path(__file__).parent.parent / "config" / "echobox.yaml"
 SSH_OPTS = ["-o", "ConnectTimeout=5"]
+MAX_PROMPT_INPUT_CHARS = 100_000
 DEFAULT_PROMPT_TEMPLATE = """You are analyzing a meeting transcript for a project team.
 
 {{known_attendees}}
@@ -70,6 +71,10 @@ One paragraph: what should the participants prepare or know before the next conv
 
 class ConfigError(RuntimeError):
     """Raised when Echobox config cannot be loaded."""
+
+
+def log_warning(message: str) -> None:
+    print(f"Warning: {message}", file=sys.stderr)
 
 
 class StepLogger:
@@ -165,7 +170,13 @@ def _build_command(config: dict, key_prefix: str, substitutions: dict[str, str])
     return _substitute_placeholders(command, substitutions)
 
 
-def ssh_run(target: str, cmd: str | list[str], timeout: int = 15) -> str:
+def ssh_run(
+    target: str,
+    cmd: str | list[str],
+    timeout: int = 15,
+    *,
+    failure_label: str = "",
+) -> str:
     if not target:
         return ""
     remote_cmd = " ".join(shlex.quote(part) for part in cmd) if isinstance(cmd, list) else cmd
@@ -174,12 +185,18 @@ def ssh_run(target: str, cmd: str | list[str], timeout: int = 15) -> str:
             ["ssh"] + SSH_OPTS + [target, remote_cmd],
             capture_output=True, text=True, timeout=timeout
         )
+        if r.returncode != 0:
+            detail = r.stderr.strip() or f"exit={r.returncode}"
+            if failure_label:
+                log_warning(f"{failure_label} failed on {target}: {detail}")
         return r.stdout.strip()
-    except Exception:
+    except Exception as exc:
+        if failure_label:
+            log_warning(f"{failure_label} failed on {target}: {exc}")
         return ""
 
 
-def local_run(cmd: str | list[str], timeout: int = 15) -> str:
+def local_run(cmd: str | list[str], timeout: int = 15, *, failure_label: str = "") -> str:
     try:
         if isinstance(cmd, list):
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
@@ -187,15 +204,26 @@ def local_run(cmd: str | list[str], timeout: int = 15) -> str:
             r = subprocess.run(
                 ["zsh", "-lc", cmd], capture_output=True, text=True, timeout=timeout
             )
+        if r.returncode != 0 and failure_label:
+            detail = r.stderr.strip() or f"exit={r.returncode}"
+            log_warning(f"{failure_label} failed: {detail}")
         return r.stdout.strip()
-    except Exception:
+    except Exception as exc:
+        if failure_label:
+            log_warning(f"{failure_label} failed: {exc}")
         return ""
 
 
-def run_command(cmd: str | list[str], workstation: str = "", timeout: int = 15) -> str:
+def run_command(
+    cmd: str | list[str],
+    workstation: str = "",
+    timeout: int = 15,
+    *,
+    failure_label: str = "",
+) -> str:
     if workstation:
-        return ssh_run(workstation, cmd, timeout)
-    return local_run(cmd, timeout)
+        return ssh_run(workstation, cmd, timeout, failure_label=failure_label)
+    return local_run(cmd, timeout, failure_label=failure_label)
 
 
 def parse_transcript_metadata(transcript_path: Path, transcript_text: str) -> dict:
@@ -338,7 +366,7 @@ def get_calendar_context(config: dict, workstation: str, transcript_date: str) -
     if not cmd:
         return []
 
-    raw = run_command(cmd, workstation, timeout=20)
+    raw = run_command(cmd, workstation, timeout=20, failure_label="calendar context fetch")
     if not raw:
         return []
     return parse_calendar_output(raw)
@@ -496,7 +524,7 @@ def _fetch_documents(config, workstation, event, allowed_sources):
     )
     if not cmd:
         return []
-    result = run_command(cmd, workstation, timeout=10)
+    result = run_command(cmd, workstation, timeout=10, failure_label="document context fetch")
     if result:
         return [f"<document_context>\n{result[:3000]}\n</document_context>"]
     return []
@@ -530,7 +558,7 @@ def _fetch_messages(config, workstation, attendee_list, allowed_sources):
                 "context_sources.messages",
                 {"term": safe_term},
             )
-            result = run_command(cmd, workstation, timeout=10)
+            result = run_command(cmd, workstation, timeout=10, failure_label="message context fetch")
             if result and result.strip():
                 sections.append(
                     f'<message_context query="{term}">\n{result[:3000]}\n</message_context>'
@@ -561,7 +589,12 @@ def _fetch_messages(config, workstation, attendee_list, allowed_sources):
         for term in external_attendees[:3]:
             safe_term = term.replace("'", "''")
             query = msg_query.replace("{term}", safe_term)
-            result = ssh_run(workstation, f'sqlite3 {shlex.quote(msg_path)} {shlex.quote(query)}', timeout=10)
+            result = ssh_run(
+                workstation,
+                f'sqlite3 {shlex.quote(msg_path)} {shlex.quote(query)}',
+                timeout=10,
+                failure_label="message context fetch",
+            )
             if result and result.strip():
                 sections.append(
                     f'<message_context query="{term}">\n{result[:3000]}\n</message_context>'
@@ -594,14 +627,14 @@ def _fetch_web(config, workstation, attendee_list, allowed_sources):
                 "context_sources.web",
                 {"query": query},
             )
-            result = run_command(cmd, workstation, timeout=8)
+            result = run_command(cmd, workstation, timeout=8, failure_label="web context fetch")
         else:
             result = run_command(
                 f"curl -sf 'https://api.duckduckgo.com/?q={query}&format=json&no_html=1' "
                 "| python3 -c \"import sys,json; d=json.load(sys.stdin); "
                 "print(d.get('Abstract','')[:500] or "
                 "next((t.get('Text','') for t in d.get('RelatedTopics',[]) if t.get('Text')), ''))\"",
-                workstation, timeout=8
+                workstation, timeout=8, failure_label="web context fetch"
             )
         if result and result.strip() and len(result.strip()) > 20:
             sections.append(f'<web_context person="{safe_name}">\n{result[:1000]}\n</web_context>')
@@ -699,7 +732,12 @@ def fetch_context_by_type(
                     safe_term = _sanitize_context_term(term)
                     cmd = _build_command(config, "context_sources.documents", {"term": safe_term})
                     if cmd:
-                        result = run_command(cmd, workstation, timeout=10)
+                        result = run_command(
+                            cmd,
+                            workstation,
+                            timeout=10,
+                            failure_label="document context fetch",
+                        )
                         if result and result.strip():
                             sections.append(f"<document_context query=\"{term}\">\n{result[:2000]}\n</document_context>")
 
@@ -717,7 +755,12 @@ def fetch_context_by_type(
                     continue
                 cmd = _build_command(config, "context_sources.messages", {"term": term})
                 if cmd:
-                    result = run_command(cmd, workstation, timeout=10)
+                    result = run_command(
+                        cmd,
+                        workstation,
+                        timeout=10,
+                        failure_label="message context fetch",
+                    )
                     if result and result.strip() and len(result.strip()) > 20:
                         sections.append(
                             f'<message_context query="{term}" type="topic">\n{result[:2000]}\n</message_context>'
@@ -813,6 +856,32 @@ def build_prompt(
             "curated_context": curated_context,
         },
     )
+
+
+def clamp_prompt_inputs(transcript_text: str, curated_context: str) -> tuple[str, str]:
+    total = len(transcript_text) + len(curated_context)
+    if total <= MAX_PROMPT_INPUT_CHARS:
+        return transcript_text, curated_context
+
+    excess = total - MAX_PROMPT_INPUT_CHARS
+    trimmed_context = curated_context
+    trimmed_transcript = transcript_text
+
+    if trimmed_context:
+        remove_from_context = min(excess, len(trimmed_context))
+        trimmed_context = trimmed_context[:-remove_from_context]
+        excess -= remove_from_context
+        log_warning(
+            f"Context truncated by {remove_from_context} chars to stay under {MAX_PROMPT_INPUT_CHARS} chars"
+        )
+
+    if excess > 0:
+        trimmed_transcript = trimmed_transcript[:-excess]
+        log_warning(
+            f"Transcript truncated by {excess} chars to stay under {MAX_PROMPT_INPUT_CHARS} chars"
+        )
+
+    return trimmed_transcript, trimmed_context
 
 
 def extract_structured_data(enrichment_md: str, meta: dict, classification: dict, attendee_list: list) -> dict:
@@ -1016,6 +1085,11 @@ def main():
     context_sections = curated_context.count("<") // 2 if curated_context else 0
     logger.emit(f"Context: {len(curated_context)} chars, {context_sections} sections"
                 + (f" (calendar, docs, messages, web, prior)" if context_sections > 0 else " (no context injected)"))
+
+    prepared_transcript_text, curated_context = clamp_prompt_inputs(
+        prepared_transcript_text,
+        curated_context,
+    )
 
     try:
         template_text = load_prompt_template(config)

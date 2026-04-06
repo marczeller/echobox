@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import threading
+import tempfile
 import wave
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -53,9 +54,11 @@ class RecordingSession:
     transcript_id: str
     started_at: datetime
     wav_path: Path
+    temp_wav_path: Path
     transcript_path: Path
     device: int | str | None
     stream: Any
+    wav_handle: wave.Wave_write
 
 
 class EchoboxRecorder:
@@ -75,8 +78,8 @@ class EchoboxRecorder:
         self.channels = channels
         self.audio_device = audio_device
         self.logger = logger or (lambda _message: None)
-        self._chunks: list[bytes] = []
-        self._chunks_lock = threading.Lock()
+        self._wav_lock = threading.Lock()
+        self._active_wav_handle: wave.Wave_write | None = None
         self._session: RecordingSession | None = None
 
     @property
@@ -103,8 +106,11 @@ class EchoboxRecorder:
     def _stream_callback(self, indata, frames, time_info, status) -> None:  # noqa: ANN001
         if status:
             self.logger(f"Recorder warning: {status}")
-        with self._chunks_lock:
-            self._chunks.append(bytes(indata))
+        with self._wav_lock:
+            wav_handle = self._active_wav_handle
+            if wav_handle is None:
+                return
+            wav_handle.writeframes(bytes(indata))
 
     def _create_stream(self, device: int | str | None):
         sd = _import_sounddevice()
@@ -126,31 +132,53 @@ class EchoboxRecorder:
         wav_path = self.output_dir / f"{transcript_id}.wav"
         transcript_path = self.output_dir / f"{transcript_id}.txt"
         device = self.resolve_input_device()
+        temp_fd, temp_path_raw = tempfile.mkstemp(
+            suffix=".wav",
+            prefix=f"{transcript_id}-",
+            dir=self.output_dir,
+        )
+        os.close(temp_fd)
+        temp_wav_path = Path(temp_path_raw)
+        wav_handle = wave.open(str(temp_wav_path), "wb")
+        wav_handle.setnchannels(self.channels)
+        wav_handle.setsampwidth(2)
+        wav_handle.setframerate(self.sample_rate)
         stream = self._create_stream(device)
-        self._chunks = []
-        self._session = RecordingSession(
+        session = RecordingSession(
             transcript_id=transcript_id,
             started_at=started_at,
             wav_path=wav_path,
+            temp_wav_path=temp_wav_path,
             transcript_path=transcript_path,
             device=device,
             stream=stream,
+            wav_handle=wav_handle,
         )
-        stream.start()
+        try:
+            with self._wav_lock:
+                self._active_wav_handle = wav_handle
+            stream.start()
+        except Exception:
+            with self._wav_lock:
+                self._active_wav_handle = None
+            try:
+                stream.close()
+            except Exception:
+                pass
+            try:
+                with self._wav_lock:
+                    wav_handle.close()
+            finally:
+                try:
+                    temp_wav_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+            raise
+        self._session = session
         self.logger(
             f"Recording started: {transcript_id} (device={device if device is not None else 'default'})"
         )
-        return self._session
-
-    def _write_wav(self, wav_path: Path) -> None:
-        with self._chunks_lock:
-            chunks = list(self._chunks)
-        with wave.open(str(wav_path), "wb") as handle:
-            handle.setnchannels(self.channels)
-            handle.setsampwidth(2)
-            handle.setframerate(self.sample_rate)
-            for chunk in chunks:
-                handle.writeframes(chunk)
+        return session
 
     def _transcribe_wav(self, wav_path: Path) -> dict[str, Any]:
         mlx_whisper = _import_mlx_whisper()
@@ -258,30 +286,48 @@ class EchoboxRecorder:
             raise RuntimeError("Recorder is not active")
 
         session = self._session
-        self._session = None
-        session.stream.stop()
-        session.stream.close()
+        try:
+            try:
+                session.stream.stop()
+            finally:
+                session.stream.close()
+        finally:
+            with self._wav_lock:
+                self._active_wav_handle = None
+                session.wav_handle.close()
+ 
 
         duration_seconds = max(
             1,
             int((datetime.now(timezone.utc) - session.started_at.astimezone(timezone.utc)).total_seconds()),
         )
-        self._write_wav(session.wav_path)
-
         try:
+            session.temp_wav_path.replace(session.wav_path)
             result = self._transcribe_wav(session.wav_path)
             if isinstance(result, dict):
                 result["_wav_path"] = str(session.wav_path)
             transcript_body = self._format_transcript(session.started_at, duration_seconds, result)
+            session.transcript_path.write_text(transcript_body, encoding="utf-8")
         except Exception as exc:
-            transcript_body = (
-                f"Date: {session.started_at.date().isoformat()}\n"
-                f"Start: {session.started_at.strftime('%H:%M')}\n"
-                f"Duration: {duration_seconds // 60}:{duration_seconds % 60:02d}\n\n"
-                f"[Transcription failed: {exc}]\n"
+            self.logger(
+                f"Recording finalization failed for {session.transcript_id}: {exc} "
+                f"(wav={session.wav_path if session.wav_path.exists() else session.temp_wav_path})"
             )
-            self.logger(f"Transcription failed for {session.wav_path.name}: {exc}")
-
-        session.transcript_path.write_text(transcript_body, encoding="utf-8")
+            if session.wav_path.exists() or session.temp_wav_path.exists():
+                try:
+                    transcript_body = (
+                        f"Date: {session.started_at.date().isoformat()}\n"
+                        f"Start: {session.started_at.strftime('%H:%M')}\n"
+                        f"Duration: {duration_seconds // 60}:{duration_seconds % 60:02d}\n\n"
+                        f"[Transcription failed: {exc}]\n"
+                    )
+                    session.transcript_path.write_text(transcript_body, encoding="utf-8")
+                except Exception as transcript_exc:
+                    self.logger(
+                        f"Transcript write failed for {session.transcript_id}: {transcript_exc}"
+                    )
+            raise
+        finally:
+            self._session = None
         self.logger(f"Recording finished: {session.transcript_path}")
         return session.transcript_path
