@@ -2,7 +2,7 @@
 
 > This file provides project instructions for AI coding assistants (Gemini CLI, Cursor, Codex, Windsurf, and others). See also: `CLAUDE.md` for the same project guidance in Claude-oriented format.
 
-Echobox records calls, transcribes them locally, diarizes speakers, enriches the transcript with a local MLX server plus optional project context, and publishes an HTML report. The macOS path is end-to-end: `echobox watch` uses the built-in recorder, captures system audio through BlackHole, transcribes locally, and triggers the pipeline automatically.
+Echobox records calls, transcribes them locally, diarizes speakers, enriches the transcript with a local MLX server plus optional project context, and publishes an HTML report. The macOS path is end-to-end: `echobox watch` uses the built-in recorder, captures microphone audio (AirPods or built-in mic), transcribes locally, and triggers the pipeline automatically.
 
 ## 30-Second Mental Model
 
@@ -55,7 +55,7 @@ What to probe on macOS:
 - Calendar CLIs: `gws`, `gcalcli`, `icalBuddy`
 - Messaging sources: `~/Library/Messages/chat.db`, Slack.app presence, Slack export folders if the user points to them
 - Project context: `PROJECT_DIR`, common project folders, notes directories, Obsidian presence
-- Recording prerequisites: `ffmpeg`, `sounddevice`, BlackHole
+- Recording prerequisites: `ffmpeg`, `sounddevice`
 
 Guardrails:
 
@@ -243,7 +243,7 @@ If a user says "my pipeline isn't working", start with this sequence:
 
 Fast symptom mapping:
 
-- Call detection never starts on macOS: inspect the built-in watcher logs, BlackHole routing, and browser/tab detection.
+- Call detection never starts on macOS: inspect the built-in watcher logs and browser/tab detection.
 - Transcript exists but enrichment fails: check `mlx_url`, model server status, and `HF_TOKEN`.
 - Enrichment works but report generation or deploy fails: check `publish.engine`, `publish.platform`, Claude CLI, and Vercel CLI separately.
 
@@ -285,9 +285,12 @@ echobox/
   echobox_recorder/
     __init__.py                    Public recorder API and attribution
     watcher.py                     Built-in meeting detection for macOS
-    recorder.py                    Audio capture and local transcription
+    recorder.py                    Audio capture and local transcription (disk-backed)
     LICENSE                        Upstream MIT attribution for vendored code
     *.diff                         Human-readable patch descriptions
+
+  scripts/
+    run-echobox.sh                 Wrapper that sources .env before running echobox
 
   docs/
     setup.md                       Detailed platform-specific setup

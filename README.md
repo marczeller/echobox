@@ -11,7 +11,7 @@ Core processing stays on your machine: transcription, diarization, and enrichmen
 ## What Happens When You Take a Call
 
 1. **Call detected** — Echobox watches your browser tabs and meeting apps for Meet/Zoom/Teams URLs
-2. **Audio captured** — BlackHole records system audio (both sides of the call) to WAV
+2. **Audio captured** — the default microphone (AirPods, built-in mic) records your side of the call to WAV
 3. **Call ends** — the built-in watcher stops recording and triggers the pipeline
 4. **Transcribed** — mlx-whisper transcribes the WAV locally with MLX/Metal on Apple Silicon
 5. **Speakers labeled** — pyannote.audio diarizes speakers (SPEAKER_00, SPEAKER_01...)
@@ -24,6 +24,8 @@ Core processing stays on your machine: transcription, diarization, and enrichmen
 12. **Notification** — optional webhook fires with the report URL and meeting summary
 
 After setup, the watcher and pipeline can run automatically from call end through report publish. End-to-end time depends heavily on your model choice and hardware.
+
+Audio is streamed directly to disk during recording, so long calls don't accumulate memory pressure. The watcher recovers from transient errors without restarting, and enrichment input is capped to prevent OOM on very long transcripts.
 
 After the call: `echobox list` to browse, `echobox open` to view the report, `echobox search "topic"` to find past discussions, `echobox actions` to see all outstanding action items across calls.
 
@@ -52,7 +54,7 @@ After the call: `echobox list` to browse, `echobox open` to view the report, `ec
 > Requires: macOS (Apple Silicon), Homebrew, Python 3.12+
 
 > Prerequisites:
-> Apple Silicon, Homebrew, BlackHole, `sounddevice`, a HuggingFace token for pyannote, and a local MLX model/server.
+> Apple Silicon, Homebrew, `sounddevice`, a HuggingFace token for pyannote speaker diarization, and a local MLX model/server.
 
 ```bash
 git clone https://github.com/marczeller/echobox.git && cd echobox
@@ -74,7 +76,7 @@ See a [sample report](docs/sample-report.html) generated from the demo fixtures.
 | Stage | What Happens |
 |-------|-------------|
 | **1. Detection** | A watcher detects that a call has started or ended |
-| **2. Recording** | System audio is captured to a WAV file |
+| **2. Recording** | Microphone audio is streamed to a WAV file on disk |
 | **3. Transcription** | mlx-whisper transcribes the call locally with MLX/Metal |
 | **4. Diarization** | pyannote.audio segments speakers |
 | **5. Enrichment** | A local LLM receives the transcript plus project context |

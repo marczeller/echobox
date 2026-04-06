@@ -285,9 +285,12 @@ echobox/
   echobox_recorder/
     __init__.py                    Public recorder API and attribution
     watcher.py                     Built-in meeting detection for macOS
-    recorder.py                    Audio capture and local transcription
+    recorder.py                    Audio capture and local transcription (disk-backed)
     LICENSE                        Upstream MIT attribution for vendored code
     *.diff                         Human-readable patch descriptions
+
+  scripts/
+    run-echobox.sh                 Wrapper that sources .env before running echobox
 
   docs/
     setup.md                       Detailed platform-specific setup
