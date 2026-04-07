@@ -223,10 +223,42 @@ def md_to_html(text: str) -> str:
     return "\n".join(out)
 
 
-def render_transcript(text: str) -> str:
+SPEAKER_TABLE_RE = re.compile(
+    r"\|\s*(?P<label>SPEAKER_\d+|Unknown)\s*\|\s*(?P<name>[^|]+?)\s*\|"
+)
+
+
+def extract_speaker_map(enrichment: str) -> dict[str, str]:
+    """Parse the Speaker Identification table to map labels to real names."""
+    mapping: dict[str, str] = {}
+    in_table = False
+    for line in enrichment.splitlines():
+        stripped = line.strip()
+        if "Speaker Identification" in stripped:
+            in_table = True
+            continue
+        if in_table:
+            if not stripped.startswith("|"):
+                if mapping:
+                    break
+                continue
+            # Skip separator rows
+            if all(set(cell.strip()) <= {"-", ":"} for cell in stripped.strip("|").split("|")):
+                continue
+            m = SPEAKER_TABLE_RE.search(stripped)
+            if m:
+                label = m.group("label").strip()
+                name = m.group("name").strip()
+                if name and label != "Speaker Label" and name != "Identified As":
+                    mapping[label] = name
+    return mapping
+
+
+def render_transcript(text: str, speaker_map: dict[str, str] | None = None) -> str:
     if not text.strip():
         return '<p class="transcript-empty">No transcript available.</p>'
 
+    name_map = speaker_map or {}
     parts = ['<div class="transcript-lines">']
     speaker_index: dict[str, int] = {}
     next_index = 0
@@ -240,7 +272,8 @@ def render_transcript(text: str) -> str:
                 next_index += 1
             color_class = f"speaker-{speaker_index[speaker]}"
             timestamp = match.group("timestamp")
-            meta = f"{html.escape(timestamp)} · {html.escape(speaker)}" if timestamp else html.escape(speaker)
+            display_name = name_map.get(speaker, speaker)
+            meta = f"{html.escape(timestamp)} &middot; {html.escape(display_name)}" if timestamp else html.escape(display_name)
             parts.append(
                 f'<div class="transcript-line {color_class}"><span class="speaker-name">{meta}</span>'
                 f'<span class="speaker-text">{html.escape(match.group("text"))}</span></div>'
@@ -255,13 +288,14 @@ def render_transcript(text: str) -> str:
 
 def render_report(template: str, enrichment: str, transcript: str, title: str, today: str | None = None) -> str:
     stats = extract_stats(enrichment, transcript)
+    speaker_map = extract_speaker_map(enrichment)
     today = today or _datetime.date.today().isoformat()
     rendered = template
     rendered = rendered.replace("{{TITLE}}", f"Call Report: {html.escape(title)}")
     rendered = rendered.replace("{{DATE}}", html.escape(today))
     rendered = rendered.replace("{{STAT_CARDS}}", render_stat_cards(stats))
     rendered = rendered.replace("{{ENRICHMENT_CONTENT}}", md_to_html(enrichment))
-    rendered = rendered.replace("{{TRANSCRIPT_CONTENT}}", render_transcript(transcript))
+    rendered = rendered.replace("{{TRANSCRIPT_CONTENT}}", render_transcript(transcript, speaker_map))
     return rendered
 
 

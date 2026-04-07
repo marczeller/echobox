@@ -84,6 +84,8 @@ class EchoboxMenuBar(rumps.App):
 
     # --- Polling in background thread to avoid blocking AppKit ---
 
+    _report_refresh_counter = 0
+
     @rumps.timer(3)
     def _tick(self, _sender) -> None:
         # _tick fires on the main AppKit thread — safe for UI updates.
@@ -92,6 +94,11 @@ class EchoboxMenuBar(rumps.App):
         if self._recording_just_ended:
             self._recording_just_ended = False
             self._refresh_recents()
+            self._refresh_reports()
+        # Refresh reports every ~30s so new pipeline results appear
+        self._report_refresh_counter += 1
+        if self._report_refresh_counter >= 10:
+            self._report_refresh_counter = 0
             self._refresh_reports()
         # Kick off next poll in background if not already running
         if self._poll_lock.locked():
