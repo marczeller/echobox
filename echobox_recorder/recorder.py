@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
+import subprocess
 import threading
 import tempfile
 import wave
@@ -61,6 +63,55 @@ def preferred_input_device(sd_module: Any | None = None) -> int | str | None:
     except Exception:
         pass
     return None
+
+
+def ensure_output_routes_to_blackhole(logger: Callable[[str], None] | None = None) -> None:
+    """If BlackHole is the input device, ensure system output routes audio through it.
+
+    AirPods (or any direct output) bypass BlackHole entirely, producing silent
+    recordings.  The fix is to switch output to a Multi-Output Device that
+    includes both the user's speakers/headphones AND BlackHole.
+    """
+    log = logger or (lambda _: None)
+    sas = shutil.which("SwitchAudioSource")
+    if not sas:
+        return  # can't check without SwitchAudioSource
+
+    try:
+        current = subprocess.run(
+            [sas, "-c", "-t", "output"],
+            capture_output=True, text=True, timeout=3, check=False,
+        ).stdout.strip().lower()
+    except Exception:
+        return
+
+    if "multi-output" in current:
+        return  # already routing through Multi-Output Device
+
+    # Check if a Multi-Output Device exists
+    try:
+        all_outputs = subprocess.run(
+            [sas, "-a", "-t", "output"],
+            capture_output=True, text=True, timeout=3, check=False,
+        ).stdout.strip()
+    except Exception:
+        return
+
+    for line in all_outputs.splitlines():
+        if "multi-output" in line.strip().lower():
+            target = line.strip()
+            try:
+                subprocess.run(
+                    [sas, "-s", target, "-t", "output"],
+                    capture_output=True, text=True, timeout=3, check=True,
+                )
+                log(f"Auto-switched output to '{target}' (was '{current}') to route audio through BlackHole")
+            except Exception as exc:
+                log(f"Failed to switch output to '{target}': {exc}")
+            return
+
+    log(f"WARNING: Output is '{current}' — BlackHole won't receive audio. "
+        f"Create a Multi-Output Device (Audio MIDI Setup) with your headphones + BlackHole.")
 
 
 @dataclass
@@ -148,6 +199,15 @@ class EchoboxRecorder:
         wav_path = self.output_dir / f"{transcript_id}.wav"
         transcript_path = self.output_dir / f"{transcript_id}.txt"
         device = self.resolve_input_device()
+        # If recording via BlackHole, ensure system output routes through it
+        if device is not None:
+            sd = _import_sounddevice()
+            try:
+                dev_info = sd.query_devices(device)
+                if isinstance(dev_info, dict) and "blackhole" in str(dev_info.get("name", "")).lower():
+                    ensure_output_routes_to_blackhole(self.logger)
+            except Exception:
+                pass
         temp_fd, temp_path_raw = tempfile.mkstemp(
             suffix=".wav",
             prefix=f"{transcript_id}-",

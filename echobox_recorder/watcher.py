@@ -229,7 +229,9 @@ class EchoboxWatcher:
         return self._browser_has_meeting_tab() or self._native_meeting_running()
 
     def _same_detection(self, left: DetectionResult | None, right: DetectionResult | None) -> bool:
-        return bool(left and right and left.source == right.source and left.detail == right.detail)
+        # Compare only source type, not the full detail string which includes
+        # all browser tab URLs and changes whenever any tab navigates.
+        return bool(left and right and left.source == right.source)
 
     def _cooldown_elapsed(self, detection: DetectionResult, now: float) -> bool:
         if self.start_cooldown <= 0:

@@ -142,6 +142,9 @@ class EchoboxMenuBar(rumps.App):
             return
         self.watcher.logger("Recording ended manually")
         self.watcher._stop_recording()
+        # Reset activity timer so a new detection for the same meeting
+        # isn't immediately killed by a stale grace period timestamp
+        self.watcher.reset_activity_timer()
         self._update_ui()
         self._refresh_recents()
         self._refresh_reports()
