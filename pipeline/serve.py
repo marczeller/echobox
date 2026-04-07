@@ -282,7 +282,7 @@ class ReportHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Location", "/")
             self.send_header(
                 "Set-Cookie",
-                f"{COOKIE_NAME}={valid_token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={COOKIE_MAX_AGE}",
+                f"{COOKIE_NAME}={valid_token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age={COOKIE_MAX_AGE}",
             )
             self.send_header("Cache-Control", "no-store")
             self._set_default_headers()

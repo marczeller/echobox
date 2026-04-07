@@ -4,6 +4,8 @@ You are analyzing a meeting transcript for a project team.
 
 <meeting_type>{{meeting_type}}</meeting_type>
 
+{{language_instruction}}
+
 {{curated_context}}
 
 Now analyze this transcript. Use the known_attendees and meeting_type to correctly identify speakers.

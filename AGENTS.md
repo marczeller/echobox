@@ -2,7 +2,9 @@
 
 > This file provides project instructions for AI coding assistants (Gemini CLI, Cursor, Codex, Windsurf, and others). See also: `CLAUDE.md` for the same project guidance in Claude-oriented format.
 
-Echobox records calls, transcribes them locally, diarizes speakers, enriches the transcript with a local MLX server plus optional project context, and publishes an HTML report. The macOS path is end-to-end: `echobox watch` uses the built-in recorder, captures microphone audio (AirPods or built-in mic), transcribes locally, and triggers the pipeline automatically.
+Echobox records calls, transcribes them locally, diarizes speakers, enriches the transcript with a local MLX server plus optional project context, and publishes an HTML report. The macOS path is end-to-end: `echobox watch` uses the built-in recorder, captures audio via BlackHole (system audio — both sides of calls), transcribes locally, and triggers the pipeline automatically.
+
+**CRITICAL: BlackHole + Multi-Output Device is REQUIRED.** The recorder auto-selects BlackHole as input to capture both sides of calls. AirPods have zero speaker bleed — mic-only captures ONLY the local user's voice. Multi-Output Device (AirPods + BlackHole 2ch) must be configured in Audio MIDI Setup. NEVER suggest removing BlackHole or going mic-only.
 
 ## 30-Second Mental Model
 

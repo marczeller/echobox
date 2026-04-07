@@ -11,7 +11,7 @@ Core processing stays on your machine: transcription, diarization, and enrichmen
 ## What Happens When You Take a Call
 
 1. **Call detected** — Echobox watches your browser tabs and meeting apps for Meet/Zoom/Teams URLs
-2. **Audio captured** — the default microphone (AirPods, built-in mic) records your side of the call to WAV
+2. **Audio captured** — BlackHole captures system audio (both sides of the call) to WAV. Requires Multi-Output Device (AirPods + BlackHole 2ch) in Audio MIDI Setup
 3. **Call ends** — the built-in watcher stops recording and triggers the pipeline
 4. **Transcribed** — mlx-whisper transcribes the WAV locally with MLX/Metal on Apple Silicon
 5. **Speakers labeled** — pyannote.audio diarizes speakers (SPEAKER_00, SPEAKER_01...)
@@ -23,7 +23,7 @@ Core processing stays on your machine: transcription, diarization, and enrichmen
 11. **Published** — report saved locally (or deployed to password-gated Vercel)
 12. **Notification** — optional webhook fires with the report URL and meeting summary
 
-After setup, the watcher and pipeline can run automatically from call end through report publish. End-to-end time depends heavily on your model choice and hardware.
+After setup, the watcher and pipeline can run automatically from call end through report publish. End-to-end time depends heavily on your model choice and hardware. The menu bar icon shows recording status, and an "End Call" button lets you manually trigger processing without waiting for tab detection.
 
 Audio is streamed directly to disk during recording, so long calls don't accumulate memory pressure. The watcher recovers from transient errors without restarting, and enrichment input is capped to prevent OOM on very long transcripts.
 

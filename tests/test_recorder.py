@@ -73,7 +73,7 @@ def main():
     tmp = Path(tempfile.mkdtemp(prefix="echobox-recorder-"))
     try:
         check(EchoboxRecorder is not None and EchoboxWatcher is not None, "package imports")
-        check(preferred_input_device(FakeSoundDevice) == 2, "preferred_input_device returns system default")
+        check(preferred_input_device(FakeSoundDevice) == 1, "preferred_input_device prefers BlackHole")
 
         recorder = TestRecorder(tmp, "demo-model")
         recorder.start("roadmap")

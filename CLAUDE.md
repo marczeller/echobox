@@ -2,7 +2,9 @@
 
 > This file provides project instructions for Claude Code. See also: `AGENTS.md` for the same project guidance in tool-agnostic format.
 
-Echobox records calls, transcribes them locally, diarizes speakers, enriches the transcript with a local MLX server plus optional project context, and publishes an HTML report. The macOS path is end-to-end: `echobox watch` uses the built-in recorder, captures audio via the default microphone (AirPods or built-in), transcribes locally, and triggers the pipeline automatically.
+Echobox records calls, transcribes them locally, diarizes speakers, enriches the transcript with a local MLX server plus optional project context, and publishes an HTML report. The macOS path is end-to-end: `echobox watch` uses the built-in recorder, captures audio via BlackHole (system audio — both sides of calls), transcribes locally, and triggers the pipeline automatically.
+
+**CRITICAL: BlackHole + Multi-Output Device is REQUIRED.** The recorder auto-selects BlackHole as input to capture both sides of calls. AirPods have zero speaker bleed — mic-only captures ONLY the local user's voice. Multi-Output Device (AirPods + BlackHole 2ch) must be configured in Audio MIDI Setup so the user hears audio AND BlackHole captures it. NEVER suggest removing BlackHole or going mic-only.
 
 ## 30-Second Mental Model
 
@@ -243,6 +245,9 @@ If a user says "my pipeline isn't working", start with this sequence:
 
 Fast symptom mapping:
 
+- **Only one side of conversation in transcript**: BlackHole not selected or Multi-Output Device not configured. Check `watcher.log` for `device=` — must show BlackHole device index (not `default`). Fix: Audio MIDI Setup → Multi-Output Device (AirPods + BlackHole) → set as system output.
+- **Transcript full of repeated garbage** ("Takk for", "vib' vib'"): Whisper hallucinations on silence. The hallucination filter should catch this. If not, check `_filter_hallucinations()` in recorder.py. Setting `whisper_language` in config can also help.
+- **Enrichment in wrong language**: The pipeline auto-detects language from transcript content. If detection is wrong, check `detect_language()` in enrich.py or set `whisper_language` in config.
 - Call detection never starts on macOS: inspect the built-in watcher logs and browser/tab detection.
 - Transcript exists but enrichment fails: check `mlx_url`, model server status, and `HF_TOKEN`.
 - Enrichment works but report generation or deploy fails: check `publish.engine`, `publish.platform`, Claude CLI, and Vercel CLI separately.

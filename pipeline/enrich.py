@@ -28,6 +28,8 @@ DEFAULT_PROMPT_TEMPLATE = """You are analyzing a meeting transcript for a projec
 
 <meeting_type>{{meeting_type}}</meeting_type>
 
+{{language_instruction}}
+
 {{curated_context}}
 
 Now analyze this transcript. Use the provided context to improve your analysis:
@@ -825,6 +827,32 @@ def load_prompt_template(config: dict) -> str:
     return path.read_text()
 
 
+LANGUAGE_INDICATORS = {
+    "fr": {"bonjour", "oui", "merci", "donc", "mais", "c'est", "qu'on", "j'ai",
+            "nous", "vous", "travaux", "est", "les", "des", "une", "pour", "dans",
+            "avec", "sur", "que", "pas", "sont", "cette", "tout", "bien", "aussi"},
+}
+
+LANGUAGE_INSTRUCTIONS = {
+    "fr": "Write your entire analysis in French. Use French section headers.",
+}
+
+
+def detect_language(transcript_text: str) -> str:
+    """Detect transcript language using word-frequency heuristics.
+
+    Returns a language code ('en', 'fr', etc.).  Falls back to 'en'.
+    """
+    words = re.findall(r"[a-zA-Zà-ÿ']+", transcript_text.lower())
+    if not words:
+        return "en"
+    for lang, indicators in LANGUAGE_INDICATORS.items():
+        hits = sum(1 for w in words if w in indicators)
+        if hits / len(words) > 0.30:
+            return lang
+    return "en"
+
+
 def render_prompt_template(template: str, values: dict[str, str]) -> str:
     rendered = template
     for key, value in values.items():
@@ -835,7 +863,7 @@ def render_prompt_template(template: str, values: dict[str, str]) -> str:
         raise ValueError(
             "Prompt template contains unknown placeholders: "
             + ", ".join(unresolved)
-            + ". Supported placeholders: transcript, known_attendees, meeting_type, curated_context."
+            + ". Supported placeholders: transcript, known_attendees, meeting_type, curated_context, language_instruction."
         )
     return rendered
 
@@ -846,6 +874,7 @@ def build_prompt(
     classification: dict,
     curated_context: str,
     template_text: str | None = None,
+    language_instruction: str = "",
 ) -> str:
     return render_prompt_template(
         template_text or DEFAULT_PROMPT_TEMPLATE,
@@ -854,6 +883,7 @@ def build_prompt(
             "known_attendees": attendees_block,
             "meeting_type": classification["meeting_type"],
             "curated_context": curated_context,
+            "language_instruction": language_instruction,
         },
     )
 
@@ -1091,6 +1121,11 @@ def main():
         curated_context,
     )
 
+    detected_lang = detect_language(transcript_text)
+    language_instruction = LANGUAGE_INSTRUCTIONS.get(detected_lang, "")
+    if detected_lang != "en":
+        logger.emit(f"Detected language: {detected_lang}")
+
     try:
         template_text = load_prompt_template(config)
         prompt = build_prompt(
@@ -1099,6 +1134,7 @@ def main():
             classification,
             curated_context,
             template_text=template_text,
+            language_instruction=language_instruction,
         )
     except (FileNotFoundError, ValueError) as exc:
         print(f"Prompt template error: {exc}", file=sys.stderr)
@@ -1109,6 +1145,7 @@ def main():
     if args.output:
         logger.emit("Extracting structured data...")
         sidecar = extract_structured_data(result, meta, classification, attendee_list)
+        sidecar["language"] = detected_lang
 
         logger.emit("Writing enrichment + JSON sidecar")
         output_path = Path(args.output)

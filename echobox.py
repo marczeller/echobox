@@ -426,6 +426,7 @@ def cmd_watch(ctx: AppContext, _args: argparse.Namespace) -> int:
     recorder = EchoboxRecorder(
         output_dir=ctx.transcript_dir,
         whisper_model=get_config(ctx.config, "whisper_model", "mlx-community/whisper-large-v3-mlx"),
+        whisper_language=get_config(ctx.config, "whisper_language", None) or None,
         logger=emit,
     )
     watcher = EchoboxWatcher(recorder, on_meeting_end=on_meeting_end, logger=emit)
@@ -689,6 +690,7 @@ def cmd_transcribe(ctx: AppContext, args: argparse.Namespace) -> int:
     recorder = EchoboxRecorder(
         output_dir=ctx.transcript_dir,
         whisper_model=get_config(ctx.config, "whisper_model", "mlx-community/whisper-large-v3-mlx"),
+        whisper_language=get_config(ctx.config, "whisper_language", None) or None,
         logger=lambda msg: print(msg),
     )
 

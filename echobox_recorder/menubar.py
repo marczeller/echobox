@@ -33,6 +33,8 @@ class EchoboxMenuBar(rumps.App):
 
         self._status_item = rumps.MenuItem("Idle", callback=None)
         self._status_item.set_callback(None)
+        self._end_call_item = rumps.MenuItem("End Call", callback=self._end_call)
+        self._end_call_item.set_callback(None)  # disabled until recording
         self._toggle_item = rumps.MenuItem("Pause", callback=self._toggle_pause)
         self._skip_item = rumps.MenuItem("Skip This Meeting", callback=self._skip_meeting)
         self._skip_item.set_callback(None)  # disabled until recording
@@ -49,6 +51,7 @@ class EchoboxMenuBar(rumps.App):
         self.menu = [
             self._status_item,
             None,  # separator
+            self._end_call_item,
             self._toggle_item,
             self._skip_item,
             None,
@@ -117,6 +120,7 @@ class EchoboxMenuBar(rumps.App):
             self.title = self.ICON_PAUSED
             self._status_item.title = "Paused"
             self._toggle_item.title = "Resume"
+            self._end_call_item.set_callback(None)
             self._skip_item.set_callback(None)
         elif self.watcher.recorder.active:
             session = self.watcher.recorder._session
@@ -124,12 +128,23 @@ class EchoboxMenuBar(rumps.App):
             self.title = self.ICON_RECORDING
             self._status_item.title = f"Recording: {hint}"
             self._toggle_item.title = "Pause"
+            self._end_call_item.set_callback(self._end_call)
             self._skip_item.set_callback(self._skip_meeting)
         else:
             self.title = self.ICON_IDLE
             self._status_item.title = "Idle"
             self._toggle_item.title = "Pause"
+            self._end_call_item.set_callback(None)
             self._skip_item.set_callback(None)
+
+    def _end_call(self, _sender) -> None:
+        if not self.watcher.recorder.active:
+            return
+        self.watcher.logger("Recording ended manually")
+        self.watcher._stop_recording()
+        self._update_ui()
+        self._refresh_recents()
+        self._refresh_reports()
 
     def _toggle_pause(self, _sender) -> None:
         self.watcher.paused = not self.watcher.paused
