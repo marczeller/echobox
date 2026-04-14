@@ -68,8 +68,19 @@ def preferred_input_device(sd_module: Any | None = None) -> int | str | None:
 def preferred_local_mic_device(sd_module: Any | None = None) -> int | None:
     """Return the device index of the local user's microphone.
 
-    Preference order: AirPods > any wireless headset > MacBook Pro Microphone >
-    system default input. Never returns BlackHole (which is a loopback, not a mic).
+    macOS already tracks the user's active input device as the system default
+    (``kAudioHardwarePropertyDefaultInputDevice`` — whatever is selected in
+    System Settings > Sound > Input). It auto-updates when AirPods, USB mics,
+    Bluetooth headphones, Continuity Camera, or audio interfaces connect, so
+    trusting it removes the need for hardcoded product-name keywords.
+
+    Resolution order:
+      1. macOS system default input, if it is a usable physical input.
+      2. First usable external input device (USB / BT / interface).
+      3. MacBook Pro built-in mic as last resort.
+
+    "Usable" excludes BlackHole (loopback) and aggregate devices (CoreAudio
+    multi-device bundles are flaky with sample rates).
     """
     sd = sd_module or _import_sounddevice()
     try:
@@ -77,30 +88,60 @@ def preferred_local_mic_device(sd_module: Any | None = None) -> int | None:
     except Exception:
         return None
 
-    preferences = ("airpods", "headset", "headphones", "macbook", "built-in")
-    for keyword in preferences:
-        for index, device in enumerate(devices):
-            if not isinstance(device, dict):
-                continue
-            name = str(device.get("name", "")).lower()
-            if "blackhole" in name:
-                continue
-            if device.get("max_input_channels", 0) <= 0:
-                continue
-            if keyword in name:
-                return index
+    def _usable(device: Any) -> bool:
+        if not isinstance(device, dict):
+            return False
+        if device.get("max_input_channels", 0) <= 0:
+            return False
+        name = str(device.get("name", "")).lower()
+        if "blackhole" in name or "aggregate" in name:
+            return False
+        return True
 
     try:
-        default = getattr(sd, "default", None)
-        device_pair = getattr(default, "device", None) if default is not None else None
-        if isinstance(device_pair, (list, tuple)) and device_pair:
-            idx = device_pair[0]
-            if idx is not None:
-                info = sd.query_devices(idx)
-                if isinstance(info, dict) and "blackhole" not in str(info.get("name", "")).lower():
-                    return int(idx)
+        idx = sd.default.device[0]
+        if idx is not None and int(idx) >= 0:
+            idx_int = int(idx)
+            if idx_int < len(devices) and _usable(devices[idx_int]):
+                return idx_int
     except Exception:
         pass
+
+    external: list[int] = []
+    internal: list[int] = []
+    for index, device in enumerate(devices):
+        if not _usable(device):
+            continue
+        name = str(device.get("name", "")).lower()
+        if "macbook" in name or "built-in" in name:
+            internal.append(index)
+        else:
+            external.append(index)
+
+    if external:
+        return external[0]
+    if internal:
+        return internal[0]
+    return None
+
+
+def macbook_pro_mic_device(sd_module: Any | None = None) -> int | None:
+    """Return the device index of the MacBook Pro built-in microphone, or None."""
+    sd = sd_module or _import_sounddevice()
+    try:
+        devices = sd.query_devices()
+    except Exception:
+        return None
+    for index, device in enumerate(devices):
+        if not isinstance(device, dict):
+            continue
+        if device.get("max_input_channels", 0) <= 0:
+            continue
+        name = str(device.get("name", "")).lower()
+        if "blackhole" in name:
+            continue
+        if "macbook" in name or "built-in" in name:
+            return index
     return None
 
 
@@ -338,56 +379,126 @@ class EchoboxRecorder:
         Returns (stream, wav_handle, wav_path, samplerate, channels) on success,
         or None if no suitable local device is available / the stream can't open.
         The stream is created but NOT started — caller is responsible for .start().
+
+        AirPods on macOS are notoriously inconsistent about reporting a
+        ``default_samplerate`` that CoreAudio actually honors — immediately after
+        a BT link-mode transition the HAL can advertise 24000 Hz but then reject
+        it with ``paInvalidSampleRate`` (-9986). We try the reported rate first,
+        then walk a ladder of well-known rates, and finally fall back to the
+        MacBook Pro built-in mic before giving up.
         """
         sd = _import_sounddevice()
         try:
-            device_idx = preferred_local_mic_device(sd)
+            primary_idx = preferred_local_mic_device(sd)
         except Exception as exc:
             self.logger(f"Local mic lookup failed: {exc}")
             return None
-        if device_idx is None:
+        if primary_idx is None:
             self.logger("No local mic device found; recording remote-only")
             return None
+
+        primary_info: dict[str, Any] | None = None
         try:
-            info = sd.query_devices(device_idx)
+            info = sd.query_devices(primary_idx)
+            if isinstance(info, dict):
+                primary_info = info
         except Exception as exc:
-            self.logger(f"Local mic query failed for device {device_idx}: {exc}")
-            return None
-        if not isinstance(info, dict):
-            return None
-        name = str(info.get("name", "unknown"))
-        samplerate = int(info.get("default_samplerate") or 16000)
-        channels = min(int(info.get("max_input_channels") or 1), 1) or 1
+            self.logger(f"Local mic query failed for device {primary_idx}: {exc}")
+
+        primary_name = (
+            str(primary_info.get("name", "unknown"))
+            if primary_info is not None
+            else f"device {primary_idx}"
+        )
+        reported_rate = (
+            int(primary_info.get("default_samplerate") or 0)
+            if primary_info is not None
+            else 0
+        )
+
+        rates: list[int] = []
+        for r in (reported_rate, 48000, 16000, 44100):
+            if r and r not in rates:
+                rates.append(r)
+
+        candidates: list[tuple[int, str, int]] = [
+            (primary_idx, primary_name, r) for r in rates
+        ]
+
+        mbp_idx = macbook_pro_mic_device(sd)
+        if mbp_idx is not None and mbp_idx != primary_idx:
+            try:
+                mbp_info = sd.query_devices(mbp_idx)
+                mbp_name = (
+                    str(mbp_info.get("name", "MacBook Pro Microphone"))
+                    if isinstance(mbp_info, dict)
+                    else "MacBook Pro Microphone"
+                )
+            except Exception:
+                mbp_name = "MacBook Pro Microphone"
+            candidates.append((mbp_idx, mbp_name, 48000))
 
         local_wav_path = self.output_dir / f"{transcript_id}-local.wav"
-        try:
-            wav_handle = wave.open(str(local_wav_path), "wb")
-            wav_handle.setnchannels(channels)
-            wav_handle.setsampwidth(2)
-            wav_handle.setframerate(samplerate)
-        except Exception as exc:
-            self.logger(f"Local WAV open failed: {exc}")
-            return None
-        try:
-            stream = self._create_local_stream(device_idx, samplerate, channels)
-        except Exception as exc:
-            self.logger(
-                f"Local stream open failed for device {device_idx} ({name}) "
-                f"at {samplerate}Hz/{channels}ch: {exc}; recording remote-only"
-            )
+        last_error: str = ""
+        for dev_idx, dev_name, sr in candidates:
             try:
-                wav_handle.close()
-            finally:
+                wav_handle = wave.open(str(local_wav_path), "wb")
+                wav_handle.setnchannels(1)
+                wav_handle.setsampwidth(2)
+                wav_handle.setframerate(sr)
+            except Exception as exc:
+                last_error = f"wav open {sr}Hz: {exc}"
+                self.logger(f"Local WAV open failed at {sr}Hz: {exc}")
                 try:
                     local_wav_path.unlink(missing_ok=True)
                 except Exception:
                     pass
-            return None
+                continue
+            try:
+                stream = self._create_local_stream(dev_idx, sr, 1)
+            except Exception as exc:
+                last_error = f"stream open {dev_name}@{sr}Hz: {exc}"
+                self.logger(
+                    f"Local stream open failed for device {dev_idx} ({dev_name}) "
+                    f"at {sr}Hz/1ch: {exc}"
+                )
+                try:
+                    wav_handle.close()
+                finally:
+                    try:
+                        local_wav_path.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                continue
+            self.logger(
+                f"Local mic track: {dev_name} (device={dev_idx}, {sr}Hz, 1ch)"
+            )
+            if dev_idx != primary_idx:
+                fallback_msg = (
+                    f"Echobox local mic fell back to {dev_name} "
+                    f"(preferred {primary_name} refused)"
+                )
+                self.logger(fallback_msg)
+                try:
+                    subprocess.run(
+                        [
+                            "osascript",
+                            "-e",
+                            f'display notification "{fallback_msg}" with title "Echobox"',
+                        ],
+                        capture_output=True,
+                        timeout=3,
+                        check=False,
+                    )
+                except Exception:
+                    pass
+            return stream, wav_handle, local_wav_path, sr, 1
+
         self.logger(
-            f"Local mic track: {name} (device={device_idx}, "
-            f"{samplerate}Hz, {channels}ch)"
+            f"All local mic candidates failed; recording remote-only. "
+            f"Last error: {last_error or 'unknown'}"
         )
-        return stream, wav_handle, local_wav_path, samplerate, channels
+        return None
 
     def start(self, session_hint: str = "call") -> RecordingSession:
         if self._session is not None:

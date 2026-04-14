@@ -289,7 +289,19 @@ elif [ -n "$NOTIFY_CMD" ]; then
     export ECHOBOX_REPORT_TITLE="${MEETING_SUMMARY:-Call report: $TRANSCRIPT_ID}"
     export ECHOBOX_REPORT_SUMMARY="$MEETING_SUMMARY"
 
-    bash -c "$NOTIFY_CMD" 2>/dev/null || echo "      Notification failed"
+    NOTIFY_LOG="$LOG_DIR/notifications.log"
+    NOTIFY_TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    {
+        printf '=== %s  %s ===\n' "$NOTIFY_TS" "$TRANSCRIPT_ID"
+        printf 'title: %s\n' "$ECHOBOX_REPORT_TITLE"
+        printf 'url:   %s\n' "$ECHOBOX_REPORT_URL"
+    } >> "$NOTIFY_LOG"
+    NOTIFY_OUTPUT=$(bash -c "$NOTIFY_CMD" 2>&1)
+    NOTIFY_EXIT=$?
+    printf 'exit=%s\noutput:\n%s\n\n' "$NOTIFY_EXIT" "$NOTIFY_OUTPUT" >> "$NOTIFY_LOG"
+    if [ "$NOTIFY_EXIT" -ne 0 ]; then
+        echo "      Notification failed (exit=$NOTIFY_EXIT, see $NOTIFY_LOG)"
+    fi
 else
     echo "      Notifications not configured"
 fi
