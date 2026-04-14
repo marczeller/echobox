@@ -169,7 +169,20 @@ VJ
         SCOPE_FLAG="--scope $PUBLISH_SCOPE"
     fi
 
-    DEPLOY_URL=$(cd "$SITE_DIR" && vercel --yes $SCOPE_FLAG 2>&1 | grep -oE "https://[a-z0-9-]+\.vercel\.app" | tail -1)
+    DEPLOY_OUTPUT=$(cd "$SITE_DIR" && vercel --prod --yes $SCOPE_FLAG 2>&1)
+    # Optional: skip Vercel inspection URLs that contain a team-scope substring.
+    # Set ECHOBOX_VERCEL_EXCLUDE to your team slug if deploys emit a secondary URL
+    # (e.g. an inspection URL) that you want filtered out. Falls through to the
+    # unfiltered last-match when unset or when no URLs remain after filtering.
+    VERCEL_EXCLUDE="${ECHOBOX_VERCEL_EXCLUDE:-}"
+    if [ -n "$VERCEL_EXCLUDE" ]; then
+        DEPLOY_URL=$(printf '%s\n' "$DEPLOY_OUTPUT" | grep -oE "https://[a-z0-9-]+\.vercel\.app" | grep -v "$VERCEL_EXCLUDE" | tail -1)
+    else
+        DEPLOY_URL=""
+    fi
+    if [ -z "$DEPLOY_URL" ]; then
+        DEPLOY_URL=$(printf '%s\n' "$DEPLOY_OUTPUT" | grep -oE "https://[a-z0-9-]+\.vercel\.app" | tail -1)
+    fi
 
     if [ -z "$DEPLOY_URL" ]; then
         echo "Vercel deploy failed, report saved locally: $SITE_DIR/report.html"

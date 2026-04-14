@@ -65,6 +65,45 @@ def preferred_input_device(sd_module: Any | None = None) -> int | str | None:
     return None
 
 
+def preferred_local_mic_device(sd_module: Any | None = None) -> int | None:
+    """Return the device index of the local user's microphone.
+
+    Preference order: AirPods > any wireless headset > MacBook Pro Microphone >
+    system default input. Never returns BlackHole (which is a loopback, not a mic).
+    """
+    sd = sd_module or _import_sounddevice()
+    try:
+        devices = sd.query_devices()
+    except Exception:
+        return None
+
+    preferences = ("airpods", "headset", "headphones", "macbook", "built-in")
+    for keyword in preferences:
+        for index, device in enumerate(devices):
+            if not isinstance(device, dict):
+                continue
+            name = str(device.get("name", "")).lower()
+            if "blackhole" in name:
+                continue
+            if device.get("max_input_channels", 0) <= 0:
+                continue
+            if keyword in name:
+                return index
+
+    try:
+        default = getattr(sd, "default", None)
+        device_pair = getattr(default, "device", None) if default is not None else None
+        if isinstance(device_pair, (list, tuple)) and device_pair:
+            idx = device_pair[0]
+            if idx is not None:
+                info = sd.query_devices(idx)
+                if isinstance(info, dict) and "blackhole" not in str(info.get("name", "")).lower():
+                    return int(idx)
+    except Exception:
+        pass
+    return None
+
+
 def ensure_output_routes_to_blackhole(logger: Callable[[str], None] | None = None) -> None:
     """If BlackHole is the input device, ensure system output routes audio through it.
 
@@ -124,6 +163,15 @@ class RecordingSession:
     device: int | str | None
     stream: Any
     wav_handle: wave.Wave_write
+    backend: str = "sounddevice"
+    session_dir: Path | None = None
+    swift_session: Any = None
+    local_stream: Any = None
+    local_wav_handle: wave.Wave_write | None = None
+    local_wav_path: Path | None = None
+    local_sample_rate: int | None = None
+    local_channels: int | None = None
+    remote_wav_path: Path | None = None
 
 
 class EchoboxRecorder:
@@ -137,6 +185,12 @@ class EchoboxRecorder:
         audio_device: int | str | None = None,
         whisper_language: str | None = None,
         logger: Callable[[str], None] | None = None,
+        capture_backend: str = "sounddevice",
+        sessions_root: str | Path | None = None,
+        swift_helper_source: str = "default-input",
+        swift_helper_device_name: str | None = None,
+        swift_helper_live_transcript: bool = False,
+        swift_helper_whisperkit_model: str = "openai_whisper-tiny",
     ) -> None:
         self.output_dir = Path(output_dir).expanduser()
         self.whisper_model = whisper_model
@@ -147,11 +201,77 @@ class EchoboxRecorder:
         self.logger = logger or (lambda _message: None)
         self._wav_lock = threading.Lock()
         self._active_wav_handle: wave.Wave_write | None = None
+        self._local_wav_lock = threading.Lock()
+        self._active_local_wav_handle: wave.Wave_write | None = None
         self._session: RecordingSession | None = None
+        self.capture_backend = capture_backend
+        self.sessions_root = (
+            Path(sessions_root).expanduser()
+            if sessions_root
+            else self.output_dir.parent / "sessions"
+        )
+        self._swift_backend: Any | None = None
+        if capture_backend == "swift_helper":
+            from .swift_helper import SwiftHelperBackend
+
+            self._swift_backend = SwiftHelperBackend(
+                sessions_root=self.sessions_root,
+                source=swift_helper_source,
+                sample_rate=sample_rate,
+                channels=channels,
+                device_name=swift_helper_device_name,
+                live_transcript=swift_helper_live_transcript,
+                whisperkit_model=swift_helper_whisperkit_model,
+                logger=self.logger,
+            )
+        elif capture_backend != "sounddevice":
+            raise ValueError(
+                f"unknown capture_backend: {capture_backend!r} "
+                "(expected 'sounddevice' or 'swift_helper')"
+            )
 
     @property
     def active(self) -> bool:
+        if self._session is None:
+            return False
+        if self._session.backend == "swift_helper":
+            self._check_swift_health()
         return self._session is not None
+
+    def _check_swift_health(self) -> None:
+        """If the swift helper has died or stopped sending heartbeats, tear
+        down the session gracefully so the watcher observes `active == False`.
+
+        This runs the normal post-call pipeline on whatever WAV was captured
+        before the death, so any partial audio is still transcribed and
+        enriched. Idempotent: returns silently if the helper is healthy."""
+        session = self._session
+        if session is None or session.backend != "swift_helper":
+            return
+        backend = self._swift_backend
+        if backend is None:
+            return
+        swift_session = session.swift_session
+        helper_dead = False
+        reason = ""
+        if swift_session is not None and swift_session.stopped:
+            helper_dead = True
+            reason = "helper process exited"
+        else:
+            status = backend.check_health()
+            if status is not None:
+                helper_dead = True
+                reason = status
+        if not helper_dead:
+            return
+        self.logger(
+            f"swift helper stopped unexpectedly ({reason}); finalising partial session"
+        )
+        try:
+            self.stop()
+        except Exception as exc:
+            self.logger(f"swift helper auto-finalise failed: {exc}")
+            self._session = None
 
     def resolve_input_device(self, sd_module: Any | None = None) -> int | str | None:
         sd = sd_module or _import_sounddevice()
@@ -179,6 +299,15 @@ class EchoboxRecorder:
                 return
             wav_handle.writeframes(bytes(indata))
 
+    def _local_stream_callback(self, indata, frames, time_info, status) -> None:  # noqa: ANN001
+        if status:
+            self.logger(f"Local mic warning: {status}")
+        with self._local_wav_lock:
+            wav_handle = self._active_local_wav_handle
+            if wav_handle is None:
+                return
+            wav_handle.writeframes(bytes(indata))
+
     def _create_stream(self, device: int | str | None):
         sd = _import_sounddevice()
         return sd.RawInputStream(
@@ -189,10 +318,85 @@ class EchoboxRecorder:
             callback=self._stream_callback,
         )
 
+    def _create_local_stream(
+        self, device: int, samplerate: int, channels: int
+    ):
+        sd = _import_sounddevice()
+        return sd.RawInputStream(
+            samplerate=samplerate,
+            channels=channels,
+            dtype="int16",
+            device=device,
+            callback=self._local_stream_callback,
+        )
+
+    def _open_local_track(
+        self, transcript_id: str
+    ) -> tuple[Any, wave.Wave_write, Path, int, int] | None:
+        """Open a second InputStream on the local mic (AirPods, fallback MBP mic).
+
+        Returns (stream, wav_handle, wav_path, samplerate, channels) on success,
+        or None if no suitable local device is available / the stream can't open.
+        The stream is created but NOT started — caller is responsible for .start().
+        """
+        sd = _import_sounddevice()
+        try:
+            device_idx = preferred_local_mic_device(sd)
+        except Exception as exc:
+            self.logger(f"Local mic lookup failed: {exc}")
+            return None
+        if device_idx is None:
+            self.logger("No local mic device found; recording remote-only")
+            return None
+        try:
+            info = sd.query_devices(device_idx)
+        except Exception as exc:
+            self.logger(f"Local mic query failed for device {device_idx}: {exc}")
+            return None
+        if not isinstance(info, dict):
+            return None
+        name = str(info.get("name", "unknown"))
+        samplerate = int(info.get("default_samplerate") or 16000)
+        channels = min(int(info.get("max_input_channels") or 1), 1) or 1
+
+        local_wav_path = self.output_dir / f"{transcript_id}-local.wav"
+        try:
+            wav_handle = wave.open(str(local_wav_path), "wb")
+            wav_handle.setnchannels(channels)
+            wav_handle.setsampwidth(2)
+            wav_handle.setframerate(samplerate)
+        except Exception as exc:
+            self.logger(f"Local WAV open failed: {exc}")
+            return None
+        try:
+            stream = self._create_local_stream(device_idx, samplerate, channels)
+        except Exception as exc:
+            self.logger(
+                f"Local stream open failed for device {device_idx} ({name}) "
+                f"at {samplerate}Hz/{channels}ch: {exc}; recording remote-only"
+            )
+            try:
+                wav_handle.close()
+            finally:
+                try:
+                    local_wav_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+            return None
+        self.logger(
+            f"Local mic track: {name} (device={device_idx}, "
+            f"{samplerate}Hz, {channels}ch)"
+        )
+        return stream, wav_handle, local_wav_path, samplerate, channels
+
     def start(self, session_hint: str = "call") -> RecordingSession:
         if self._session is not None:
             raise RuntimeError("Recorder already active")
+        if self.capture_backend == "swift_helper":
+            return self._start_swift(session_hint)
+        return self._start_sounddevice(session_hint)
 
+    def _start_sounddevice(self, session_hint: str) -> RecordingSession:
         started_at = datetime.now().astimezone()
         transcript_id = f"{started_at.strftime('%Y-%m-%d_%H-%M')}_{slugify_hint(session_hint)}"
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -220,6 +424,7 @@ class EchoboxRecorder:
         wav_handle.setsampwidth(2)
         wav_handle.setframerate(self.sample_rate)
         stream = self._create_stream(device)
+        local_track = self._open_local_track(transcript_id)
         session = RecordingSession(
             transcript_id=transcript_id,
             started_at=started_at,
@@ -230,17 +435,61 @@ class EchoboxRecorder:
             stream=stream,
             wav_handle=wav_handle,
         )
+        if local_track is not None:
+            (
+                session.local_stream,
+                session.local_wav_handle,
+                session.local_wav_path,
+                session.local_sample_rate,
+                session.local_channels,
+            ) = local_track
         try:
             with self._wav_lock:
                 self._active_wav_handle = wav_handle
+            if session.local_wav_handle is not None:
+                with self._local_wav_lock:
+                    self._active_local_wav_handle = session.local_wav_handle
             stream.start()
+            if session.local_stream is not None:
+                try:
+                    session.local_stream.start()
+                except Exception as exc:
+                    self.logger(
+                        f"Local stream start failed: {exc}; continuing remote-only"
+                    )
+                    with self._local_wav_lock:
+                        self._active_local_wav_handle = None
+                    try:
+                        session.local_stream.close()
+                    except Exception:
+                        pass
+                    try:
+                        if session.local_wav_handle is not None:
+                            session.local_wav_handle.close()
+                    except Exception:
+                        pass
+                    if session.local_wav_path is not None:
+                        try:
+                            session.local_wav_path.unlink(missing_ok=True)
+                        except Exception:
+                            pass
+                    session.local_stream = None
+                    session.local_wav_handle = None
+                    session.local_wav_path = None
         except Exception:
             with self._wav_lock:
                 self._active_wav_handle = None
+            with self._local_wav_lock:
+                self._active_local_wav_handle = None
             try:
                 stream.close()
             except Exception:
                 pass
+            if session.local_stream is not None:
+                try:
+                    session.local_stream.close()
+                except Exception:
+                    pass
             try:
                 with self._wav_lock:
                     wav_handle.close()
@@ -249,10 +498,55 @@ class EchoboxRecorder:
                     temp_wav_path.unlink(missing_ok=True)
                 except Exception:
                     pass
+            if session.local_wav_handle is not None:
+                try:
+                    session.local_wav_handle.close()
+                except Exception:
+                    pass
+            if session.local_wav_path is not None:
+                try:
+                    session.local_wav_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
             raise
         self._session = session
         self.logger(
             f"Recording started: {transcript_id} (device={device if device is not None else 'default'})"
+        )
+        return session
+
+    def _start_swift(self, session_hint: str) -> RecordingSession:
+        from .swift_helper import session_id_from_hint
+
+        assert self._swift_backend is not None
+        started_at = datetime.now().astimezone()
+        transcript_id = session_id_from_hint(slugify_hint(session_hint), started_at)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        transcript_path = self.output_dir / f"{transcript_id}.txt"
+        swift_session = self._swift_backend.start(
+            session_id=transcript_id,
+            transcript_path=transcript_path,
+        )
+        # The session WAV lives inside the session dir; surface it as wav_path
+        # so the orchestrator/legacy code can find it via convention.
+        wav_path = swift_session.wav_path
+        session = RecordingSession(
+            transcript_id=transcript_id,
+            started_at=started_at,
+            wav_path=wav_path,
+            temp_wav_path=wav_path,
+            transcript_path=transcript_path,
+            device=f"swift:{self._swift_backend.source}",
+            stream=None,
+            wav_handle=None,  # type: ignore[arg-type]
+            backend="swift_helper",
+            session_dir=swift_session.session_dir,
+            swift_session=swift_session,
+        )
+        self._session = session
+        self.logger(
+            f"Recording started (swift_helper): {transcript_id} "
+            f"source={self._swift_backend.source}"
         )
         return session
 
@@ -320,6 +614,65 @@ class EchoboxRecorder:
             if t >= concat_offset:
                 return original_start + (t - concat_offset)
         return t
+
+    def discard_session_artifacts(self, session: RecordingSession) -> None:
+        """Remove all on-disk artifacts produced for a session. Used by
+        `Skip This Meeting`. Handles both capture backends."""
+        for path in (session.transcript_path, session.wav_path, session.temp_wav_path):
+            try:
+                if path is not None:
+                    path.unlink(missing_ok=True)
+            except Exception as exc:
+                self.logger(f"discard: could not delete {path}: {exc}")
+        if session.backend == "swift_helper" and session.session_dir is not None:
+            import shutil as _shutil
+
+            try:
+                _shutil.rmtree(session.session_dir, ignore_errors=True)
+            except Exception as exc:
+                self.logger(f"discard: could not remove {session.session_dir}: {exc}")
+
+    def _write_final_jsonl(self, session: RecordingSession, result: dict[str, Any]) -> None:
+        """Write the post-call transcription result as one JSON object per segment
+        to <session_dir>/transcript.final.jsonl. Used by the Phase 4 session-dir
+        layout so enrichment can consume structured segments rather than the
+        flat .txt projection."""
+        import json
+
+        if session.session_dir is None:
+            return
+        segments = result.get("segments") if isinstance(result, dict) else None
+        if not isinstance(segments, list):
+            return
+        path = session.session_dir / "transcript.final.jsonl"
+        try:
+            with path.open("w", encoding="utf-8") as fp:
+                fp.write(
+                    json.dumps(
+                        {
+                            "type": "meta",
+                            "session_id": session.transcript_id,
+                            "started_at": session.started_at.isoformat(),
+                            "wav_path": str(session.wav_path),
+                            "language": result.get("language"),
+                        },
+                        sort_keys=True,
+                    )
+                    + "\n"
+                )
+                for seg in segments:
+                    if not isinstance(seg, dict):
+                        continue
+                    payload = {
+                        "type": "segment",
+                        "start": float(seg.get("start", 0) or 0),
+                        "end": float(seg.get("end", 0) or 0),
+                        "text": str(seg.get("text", "")).strip(),
+                        "speaker": str(seg.get("speaker", "")) or None,
+                    }
+                    fp.write(json.dumps(payload, sort_keys=True) + "\n")
+        except OSError as exc:
+            self.logger(f"transcript.final.jsonl write failed: {exc}")
 
     @staticmethod
     def _filter_hallucinations(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -465,6 +818,23 @@ class EchoboxRecorder:
             updated_segment = dict(segment)
             updated_segment["speaker"] = speaker
             diarized_segments.append(updated_segment)
+
+        try:
+            from pipeline.speaker_id import identify_speakers
+            turn_segments = [
+                {"start": s, "end": e, "speaker": spk} for s, e, spk in turns
+            ]
+            mapping = identify_speakers(wav_path, turn_segments, logger=self.logger)
+            if mapping:
+                for seg in diarized_segments:
+                    if not isinstance(seg, dict):
+                        continue
+                    spk = seg.get("speaker")
+                    if isinstance(spk, str) and spk in mapping:
+                        seg["speaker"] = mapping[spk]
+        except Exception as exc:
+            self.logger(f"Voice ID skipped: {exc}")
+
         return diarized_segments
 
     def _format_transcript(self, started_at: datetime, duration_seconds: int, result: dict[str, Any]) -> str:
@@ -492,33 +862,156 @@ class EchoboxRecorder:
                 lines.append(text)
         return "\n".join(lines).strip() + "\n"
 
+    def _mix_or_promote_tracks(self, session: RecordingSession) -> None:
+        """Finalise the session WAV.
+
+        If only the remote (BlackHole) track exists, rename the temp WAV to
+        wav_path — same behaviour as the single-stream path.
+
+        If a local (AirPods / mic) track also exists, mix both tracks into
+        wav_path via ffmpeg `amix`. Keep the raw tracks alongside the mixed
+        file as `<transcript_id>-remote.wav` and `<transcript_id>-local.wav`
+        for debugging and for downstream per-track diarization.
+        """
+        remote_track_path = session.temp_wav_path
+        local_track_path = session.local_wav_path
+
+        has_local = (
+            local_track_path is not None
+            and local_track_path.exists()
+            and local_track_path.stat().st_size > 44  # empty WAV header is 44 bytes
+        )
+
+        if not has_local:
+            remote_track_path.replace(session.wav_path)
+            return
+
+        ffmpeg = shutil.which("ffmpeg")
+        if ffmpeg is None:
+            self.logger(
+                "ffmpeg not found; keeping remote-only track and dropping local track"
+            )
+            remote_track_path.replace(session.wav_path)
+            return
+
+        remote_final = self.output_dir / f"{session.transcript_id}-remote.wav"
+        local_final = self.output_dir / f"{session.transcript_id}-local.wav"
+        try:
+            remote_track_path.replace(remote_final)
+        except Exception as exc:
+            self.logger(f"Remote track rename failed: {exc}")
+            remote_track_path.replace(session.wav_path)
+            return
+        if local_track_path != local_final:
+            try:
+                local_track_path.replace(local_final)
+            except Exception as exc:
+                self.logger(f"Local track rename failed: {exc}")
+                remote_final.replace(session.wav_path)
+                try:
+                    local_track_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                return
+
+        session.remote_wav_path = remote_final
+        session.local_wav_path = local_final
+
+        cmd = [
+            ffmpeg,
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            str(remote_final),
+            "-i",
+            str(local_final),
+            "-filter_complex",
+            "[0:a]aresample=16000[a0];"
+            "[1:a]aresample=16000[a1];"
+            "[a0][a1]amix=inputs=2:duration=longest:dropout_transition=0,"
+            "dynaudnorm=f=200:g=5",
+            "-ar",
+            "16000",
+            "-ac",
+            "1",
+            "-sample_fmt",
+            "s16",
+            str(session.wav_path),
+        ]
+        try:
+            subprocess.run(cmd, check=True, capture_output=True)
+            self.logger(
+                f"Mixed dual-track WAV: remote={remote_final.name}, "
+                f"local={local_final.name} -> {session.wav_path.name}"
+            )
+        except subprocess.CalledProcessError as exc:
+            stderr = exc.stderr.decode("utf-8", errors="replace") if exc.stderr else ""
+            self.logger(
+                f"ffmpeg amix failed ({exc.returncode}): {stderr.strip()[-400:]}; "
+                f"falling back to remote-only track"
+            )
+            try:
+                shutil.copyfile(remote_final, session.wav_path)
+            except Exception as copy_exc:
+                self.logger(f"remote-only fallback copy failed: {copy_exc}")
+                raise
+
     def stop(self) -> Path:
         if self._session is None:
             raise RuntimeError("Recorder is not active")
 
         session = self._session
-        try:
+        if session.backend == "swift_helper":
+            assert self._swift_backend is not None
             try:
-                session.stream.stop()
+                self._swift_backend.stop()
+            except Exception as exc:
+                self.logger(f"Swift helper stop failed: {exc}")
+        else:
+            try:
+                try:
+                    session.stream.stop()
+                finally:
+                    session.stream.close()
+                if session.local_stream is not None:
+                    try:
+                        session.local_stream.stop()
+                    except Exception as exc:
+                        self.logger(f"Local stream stop failed: {exc}")
+                    finally:
+                        try:
+                            session.local_stream.close()
+                        except Exception as exc:
+                            self.logger(f"Local stream close failed: {exc}")
             finally:
-                session.stream.close()
-        finally:
-            with self._wav_lock:
-                self._active_wav_handle = None
-                session.wav_handle.close()
- 
+                with self._wav_lock:
+                    self._active_wav_handle = None
+                    if session.wav_handle is not None:
+                        session.wav_handle.close()
+                with self._local_wav_lock:
+                    self._active_local_wav_handle = None
+                    if session.local_wav_handle is not None:
+                        try:
+                            session.local_wav_handle.close()
+                        except Exception:
+                            pass
 
         duration_seconds = max(
             1,
             int((datetime.now(timezone.utc) - session.started_at.astimezone(timezone.utc)).total_seconds()),
         )
         try:
-            session.temp_wav_path.replace(session.wav_path)
+            if session.backend == "sounddevice":
+                self._mix_or_promote_tracks(session)
             result = self._transcribe_wav(session.wav_path)
             if isinstance(result, dict):
                 result["_wav_path"] = str(session.wav_path)
             transcript_body = self._format_transcript(session.started_at, duration_seconds, result)
             session.transcript_path.write_text(transcript_body, encoding="utf-8")
+            if session.backend == "swift_helper" and session.session_dir is not None:
+                self._write_final_jsonl(session, result)
         except Exception as exc:
             self.logger(
                 f"Recording finalization failed for {session.transcript_id}: {exc} "

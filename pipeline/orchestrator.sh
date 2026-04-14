@@ -132,6 +132,8 @@ if [ ! -f "$TRANSCRIPT_FILE" ]; then
 fi
 
 WORKSTATION="${ECHOBOX_WORKSTATION:-$(read_config workstation_ssh '')}"
+MEETING_NOTES_SSH="$(read_config 'meeting_notes.ssh_host' '')"
+MEETING_NOTES_DIR="$(read_config 'meeting_notes.base_dir' '~/meeting-notes')"
 ENRICHED_ENRICHMENT="$ENRICHMENT_DIR/${TRANSCRIPT_ID}-enriched.md"
 RAW_ENRICHMENT="$ENRICHMENT_DIR/${TRANSCRIPT_ID}-raw.md"
 ENRICHMENT="$ENRICHED_ENRICHMENT"
@@ -152,7 +154,7 @@ use_raw_transcript() {
     ENRICHMENT_STATUS="raw"
 }
 
-echo "[1/4] LLM enrichment with project context..."
+echo "[1/5] LLM enrichment with project context..."
 if [ -n "$WORKSTATION" ]; then
     REMOTE_TRANSCRIPT="$(basename "$TRANSCRIPT_FILE" | sed 's/[^a-zA-Z0-9._-]/_/g')"
     REMOTE_ENRICHMENT="$(basename "$ENRICHED_ENRICHMENT" | sed 's/[^a-zA-Z0-9._-]/_/g')"
@@ -182,8 +184,36 @@ else
     use_raw_transcript "Saving raw transcript as $(basename "$RAW_ENRICHMENT")"
 fi
 
+if [ "$ENRICHMENT_STATUS" = "enriched" ] && [ -f "${ENRICHMENT%.md}.json" ]; then
+    echo "[1.5/5] Deriving meaningful slug from enrichment..."
+    SIDECAR_FOR_SLUG="${ENRICHMENT%.md}.json"
+    NEW_SLUG=$("$ECHOBOX_PYTHON" "$ECHOBOX_DIR/pipeline/slug_from_enrichment.py" \
+        "$SIDECAR_FOR_SLUG" "$TRANSCRIPT_ID" 2>/dev/null || echo "")
+    if [ -n "$NEW_SLUG" ] && [ "$NEW_SLUG" != "$TRANSCRIPT_ID" ]; then
+        NEW_TRANSCRIPT_FILE="$TRANSCRIPT_DIR/${NEW_SLUG}.txt"
+        NEW_ENRICHMENT="$ENRICHMENT_DIR/${NEW_SLUG}-enriched.md"
+        NEW_SIDECAR="$ENRICHMENT_DIR/${NEW_SLUG}-enriched.json"
+        if [ -e "$NEW_TRANSCRIPT_FILE" ] || [ -e "$NEW_ENRICHMENT" ]; then
+            NEW_SLUG="${NEW_SLUG}-${TRANSCRIPT_ID##*_}"
+            NEW_TRANSCRIPT_FILE="$TRANSCRIPT_DIR/${NEW_SLUG}.txt"
+            NEW_ENRICHMENT="$ENRICHMENT_DIR/${NEW_SLUG}-enriched.md"
+            NEW_SIDECAR="$ENRICHMENT_DIR/${NEW_SLUG}-enriched.json"
+        fi
+        mv "$TRANSCRIPT_FILE" "$NEW_TRANSCRIPT_FILE"
+        mv "$ENRICHMENT" "$NEW_ENRICHMENT"
+        mv "$SIDECAR_FOR_SLUG" "$NEW_SIDECAR"
+        TRANSCRIPT_ID="$NEW_SLUG"
+        TRANSCRIPT_FILE="$NEW_TRANSCRIPT_FILE"
+        ENRICHMENT="$NEW_ENRICHMENT"
+        ENRICHED_ENRICHMENT="$NEW_ENRICHMENT"
+        echo "      Renamed to: ${NEW_SLUG}"
+    else
+        echo "      Keeping original slug: ${TRANSCRIPT_ID}"
+    fi
+fi
+
 if [ -n "$WORKSTATION" ]; then
-    echo "[2/4] Syncing to workstation..."
+    echo "[2/5] Syncing to workstation..."
     for attempt in 1 2 3; do
         rsync -az "$TRANSCRIPT_DIR/" "$WORKSTATION:~/echobox-data/transcripts/" && \
         rsync -az "$ENRICHMENT_DIR/" "$WORKSTATION:~/echobox-data/enrichments/" && \
@@ -191,13 +221,59 @@ if [ -n "$WORKSTATION" ]; then
         echo "      Retry $attempt/3..." && sleep 5
     done
 else
-    echo "[2/4] Single-machine mode, skipping sync"
+    echo "[2/5] Single-machine mode, skipping sync"
 fi
 
-echo "[3/4] Publishing call report..."
+echo "[3/5] Publishing call report..."
 bash "$ECHOBOX_DIR/pipeline/publish.sh" "$ENRICHMENT" 2>&1 || echo "      Publish skipped"
 
-echo "[4/4] Sending notification..."
+echo "[4/5] Syncing to meeting notes..."
+if [ -n "$MEETING_NOTES_SSH" ] && [ "$ENRICHMENT_STATUS" = "enriched" ]; then
+    NOTES_FILENAME="$(echo "$TRANSCRIPT_ID" | tr '_' '-').md"
+    NOTES_JSON_FILENAME="$(echo "$TRANSCRIPT_ID" | tr '_' '-').json"
+    RAW_FILENAME="$(echo "$TRANSCRIPT_ID" | tr '_' '-').txt"
+    SIDECAR="${ENRICHMENT%.md}.json"
+
+    ssh -o ConnectTimeout=10 "$MEETING_NOTES_SSH" \
+        "mkdir -p ${MEETING_NOTES_DIR}/{enrichments,raw-transcripts}" 2>/dev/null || true
+
+    scp -o ConnectTimeout=10 "$ENRICHMENT" \
+        "${MEETING_NOTES_SSH}:${MEETING_NOTES_DIR}/${NOTES_FILENAME}" && \
+        echo "      Copied enrichment: $NOTES_FILENAME" || \
+        echo "      Failed to copy enrichment"
+
+    if [ -f "$SIDECAR" ]; then
+        scp -o ConnectTimeout=10 "$SIDECAR" \
+            "${MEETING_NOTES_SSH}:${MEETING_NOTES_DIR}/enrichments/${NOTES_JSON_FILENAME}" && \
+            echo "      Copied sidecar: enrichments/$NOTES_JSON_FILENAME" || \
+            echo "      Failed to copy sidecar"
+    fi
+
+    if [ -f "$TRANSCRIPT_FILE" ]; then
+        scp -o ConnectTimeout=10 "$TRANSCRIPT_FILE" \
+            "${MEETING_NOTES_SSH}:${MEETING_NOTES_DIR}/raw-transcripts/${RAW_FILENAME}" && \
+            echo "      Copied transcript: raw-transcripts/$RAW_FILENAME" || \
+            echo "      Failed to copy transcript"
+    fi
+
+    REPORT_SLUG_SYNC=$(echo "$(basename "$ENRICHMENT" .md)" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g')
+    LOCAL_REPORT="$REPORT_DIR/$REPORT_SLUG_SYNC/report.html"
+    REMOTE_REPORTS_DIR="$(read_config 'meeting_notes.reports_dir' '~/echobox-reports/reports')"
+    if [ -f "$LOCAL_REPORT" ]; then
+        ssh -o ConnectTimeout=10 "$MEETING_NOTES_SSH" \
+            "mkdir -p ${REMOTE_REPORTS_DIR}/${REPORT_SLUG_SYNC}" 2>/dev/null || true
+        scp -o ConnectTimeout=10 "$LOCAL_REPORT" \
+            "${MEETING_NOTES_SSH}:${REMOTE_REPORTS_DIR}/${REPORT_SLUG_SYNC}/report.html" && \
+            echo "      Copied report: $REPORT_SLUG_SYNC/report.html" || \
+            echo "      Failed to copy report"
+    fi
+elif [ -z "$MEETING_NOTES_SSH" ]; then
+    echo "      Meeting notes sync not configured"
+else
+    echo "      Skipping meeting notes sync (enrichment status: $ENRICHMENT_STATUS)"
+fi
+
+echo "[5/5] Sending notification..."
 NOTIFY_ENABLED="${ECHOBOX_NOTIFY_ENABLED:-$(read_config 'notify.enabled' 'false')}"
 NOTIFY_CMD="${ECHOBOX_NOTIFY_CMD:-$(read_config 'notify.command' '')}"
 if [ "$NOTIFY_ENABLED" != "true" ]; then

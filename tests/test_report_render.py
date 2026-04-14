@@ -6,7 +6,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from pipeline.report_render import extract_stats, md_to_html, render_report, render_transcript
+from pipeline.report_render import (
+    _replace_speaker_section,
+    extract_speaker_map,
+    md_to_html,
+    render_report,
+    render_transcript,
+)
 
 PASS = 0
 FAIL = 0
@@ -38,13 +44,11 @@ def main():
 {"ok": true}
 ```
 """
-    stats = extract_stats(fixture, transcript_fixture)
     html = md_to_html(sample)
     transcript_html = render_transcript("[00:00] SPEAKER_00: Opening context\n[00:08] SPEAKER_01: Reply\n\nNarrator line")
-    report = render_report("<html>{{ENRICHMENT_CONTENT}}{{TRANSCRIPT_CONTENT}}{{STAT_CARDS}}</html>", fixture, transcript_fixture, "Roadmap")
-    check(stats.participant_count == 2, f"participant count extracted: {stats.participant_count}")
-    check(stats.action_item_count == 3, f"action item count extracted: {stats.action_item_count}")
-    check(stats.meeting_duration == "2:34", f"meeting duration extracted: {stats.meeting_duration}")
+    report = render_report("<html>{{ENRICHMENT_CONTENT}}{{TRANSCRIPT_CONTENT}}</html>", fixture, transcript_fixture, "Roadmap")
+    speaker_map = extract_speaker_map(fixture)
+    stripped = _replace_speaker_section(fixture, speaker_map)
     check("<h1>Review</h1>" in html, "headings render")
     check("<strong>[Alex]</strong>" not in html and "owner-tag" in html , "action owner tag rendered")
     check("<em>polished</em>" in html and "<code>owner-tags</code>" in html, "inline emphasis renders")
@@ -52,7 +56,15 @@ def main():
     check("<table>" in html and "<td>Alex Chen</td>" in html, "tables render")
     check("<pre><code>{&quot;ok&quot;: true}</code></pre>" in html, "code blocks render")
     check("speaker-0" in transcript_html and "speaker-1" in transcript_html and "00:00" in transcript_html, "speaker transcript colors assigned")
-    check("Participants" in report and "Action Items" in report and "Meeting Duration" in report, "stat cards included in report")
+    check("## Speaker Identification" not in stripped, "speaker section stripped from enrichment")
+    check("**Speakers:** Alex Chen, Priya Raman." in stripped, "speakers one-liner injected")
+    check('class="stat-card"' not in report, "stat cards removed from report")
+    check("<h2>Speaker Identification</h2>" not in report, "no speaker h2 in rendered report")
+    check("Speakers:" in report and "Alex Chen" in report, "speakers line present in report")
+    email_fixture = fixture.replace("| SPEAKER_01 | Priya Raman | high |", "| SPEAKER_01 | p@example.com | high |")
+    email_map = extract_speaker_map(email_fixture)
+    email_stripped = _replace_speaker_section(email_fixture, email_map)
+    check("p@example.com" not in email_stripped, "email addresses excluded from speakers one-liner")
     print(f"\nResults: {PASS} passed, {FAIL} failed")
     sys.exit(1 if FAIL > 0 else 0)
 

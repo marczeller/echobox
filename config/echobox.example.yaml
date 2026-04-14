@@ -4,6 +4,37 @@
 # Copy this file to echobox.yaml and edit to match your setup.
 # All paths support ~ expansion and environment variables.
 
+# --- Audio capture backend ---
+capture:
+  # backend: which capture path to use
+  #   "sounddevice" (default, fully tested) — the Python sounddevice path that
+  #     selects BlackHole automatically. REQUIRES BlackHole + Multi-Output Device.
+  #   "swift_helper" (opt-in, new) — spawns the echobox-capture Swift binary which
+  #     supports live transcription, session-directory layout, and the optional
+  #     Core Audio process-tap source. Requires building the helper:
+  #         cd swift/echobox-capture && swift build -c release
+  backend: sounddevice
+  # source: only used when backend=swift_helper
+  #   "default-input"  — capture from the default macOS input (BlackHole when set)
+  #   "process-tap"    — Core Audio process tap, no BlackHole required (macOS 14.2+)
+  #   "test-signal"    — synthetic 440 Hz sine wave (CI / smoke tests)
+  source: default-input
+  # device_name: substring filter for selecting an input device (case-insensitive).
+  # Only used when backend=swift_helper and source=default-input. Example: "BlackHole"
+  device_name: ""
+  # live_transcript: enable WhisperKit streaming inside the Swift helper.
+  # Only used when backend=swift_helper. Opens a floating caption panel during
+  # recording; the panel is hidden from screen-share (NSWindowSharingNone).
+  live_transcript: false
+  # whisperkit_model: which WhisperKit on-device model to use for live captions.
+  # tiny:    ~40 MB, ~14 s first-run download, runs on any Apple Silicon
+  # base:    ~140 MB, better accuracy
+  # large-v3-turbo: ~600 MB, best accuracy, slower first-run download
+  whisperkit_model: openai_whisper-tiny
+  # sessions_root: where session directories are stored (when backend=swift_helper).
+  # Defaults to <data_dir>/sessions.
+  sessions_root: ""
+
 # --- Whisper transcription ---
 whisper_model: mlx-community/whisper-large-v3-mlx
 # Uses mlx-whisper with MLX/Metal acceleration on Apple Silicon.

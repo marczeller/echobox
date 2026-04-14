@@ -4,11 +4,16 @@ import signal
 import subprocess
 import threading
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 import rumps
 
 from .watcher import EchoboxWatcher
+
+try:
+    from .caption_panel import CaptionPanel
+except Exception:  # pragma: no cover - pyobjc import guard
+    CaptionPanel = None  # type: ignore[assignment,misc]
 
 
 class EchoboxMenuBar(rumps.App):
@@ -23,6 +28,7 @@ class EchoboxMenuBar(rumps.App):
         transcript_dir: Path,
         report_dir: Path,
         on_quit: Callable[[], None] | None = None,
+        enable_caption_panel: bool = False,
     ) -> None:
         super().__init__(self.ICON_IDLE, quit_button=None)
         self.watcher = watcher
@@ -30,6 +36,15 @@ class EchoboxMenuBar(rumps.App):
         self.report_dir = report_dir
         self._on_quit = on_quit
         self._poll_lock = threading.Lock()
+
+        self._caption_panel: CaptionPanel | None = None
+        if enable_caption_panel and CaptionPanel is not None:
+            try:
+                self._caption_panel = CaptionPanel()
+            except Exception as exc:
+                self.watcher.logger(f"Caption panel disabled: {exc}")
+                self._caption_panel = None
+        self._wire_caption_panel()
 
         self._status_item = rumps.MenuItem("Idle", callback=None)
         self._status_item.set_callback(None)
@@ -69,9 +84,30 @@ class EchoboxMenuBar(rumps.App):
         # Handle SIGTERM for clean shutdown (launchd sends this)
         signal.signal(signal.SIGTERM, self._handle_signal)
 
+    def _wire_caption_panel(self) -> None:
+        """If the recorder uses the swift_helper backend, route its event stream
+        through the caption panel. Safe to call even when the panel is disabled."""
+        backend = getattr(self.watcher.recorder, "_swift_backend", None)
+        if backend is None:
+            return
+
+        def _on_event(_session: Any, event: dict[str, Any]) -> None:
+            panel = self._caption_panel
+            if panel is None:
+                return
+            kind = event.get("type")
+            if kind == "started":
+                panel.reset()
+                panel.show()
+            panel.handle_event(event)
+            if kind == "stopped":
+                panel.hide()
+
+        backend.on_event = _on_event
+
     def _handle_signal(self, signum, frame) -> None:
         self._cleanup_recording()
-        rumps.quit_app()
+        rumps.quit_application()
 
     def _cleanup_recording(self) -> None:
         if self.watcher.recorder.active:
@@ -173,10 +209,14 @@ class EchoboxMenuBar(rumps.App):
         session = self.watcher.recorder._session
         self.watcher.logger(f"Skipping meeting: {session.transcript_id if session else 'unknown'}")
         try:
-            transcript_path = self.watcher.recorder.stop()
-            transcript_path.unlink(missing_ok=True)
-            wav_path = transcript_path.with_suffix(".wav")
-            wav_path.unlink(missing_ok=True)
+            # Snapshot the session before stop() clears _session so we can
+            # delete backend-specific artifacts afterwards.
+            snapshot = session
+            try:
+                self.watcher.recorder.stop()
+            finally:
+                if snapshot is not None:
+                    self.watcher.recorder.discard_session_artifacts(snapshot)
         except Exception as exc:
             self.watcher.logger(f"Error skipping: {exc}")
         self._update_ui()
@@ -254,4 +294,4 @@ class EchoboxMenuBar(rumps.App):
         self._cleanup_recording()
         if self._on_quit:
             self._on_quit()
-        rumps.quit_app()
+        rumps.quit_application()

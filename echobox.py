@@ -423,12 +423,32 @@ def cmd_watch(ctx: AppContext, _args: argparse.Namespace) -> int:
         with child_lock:
             child_processes.append(child)
 
+    capture_backend = (get_config(ctx.config, "capture.backend", "sounddevice") or "sounddevice").strip()
+    swift_source = (get_config(ctx.config, "capture.source", "default-input") or "default-input").strip()
+    swift_device_name = get_config(ctx.config, "capture.device_name", "") or None
+    swift_live_transcript = (get_config(ctx.config, "capture.live_transcript", "false") or "false").strip().lower() == "true"
+    swift_whisperkit_model = (get_config(ctx.config, "capture.whisperkit_model", "openai_whisper-tiny") or "openai_whisper-tiny").strip()
+    sessions_root_cfg = get_config(ctx.config, "capture.sessions_root", "") or ""
+    sessions_root = (
+        Path(sessions_root_cfg).expanduser()
+        if sessions_root_cfg
+        else ctx.data_dir / "sessions"
+    )
+
     recorder = EchoboxRecorder(
         output_dir=ctx.transcript_dir,
         whisper_model=get_config(ctx.config, "whisper_model", "mlx-community/whisper-large-v3-mlx"),
         whisper_language=get_config(ctx.config, "whisper_language", None) or None,
         logger=emit,
+        capture_backend=capture_backend,
+        sessions_root=sessions_root,
+        swift_helper_source=swift_source,
+        swift_helper_device_name=swift_device_name,
+        swift_helper_live_transcript=swift_live_transcript,
+        swift_helper_whisperkit_model=swift_whisperkit_model,
     )
+    if capture_backend == "swift_helper":
+        emit(f"capture backend: swift_helper (source={swift_source})")
     watcher = EchoboxWatcher(recorder, on_meeting_end=on_meeting_end, logger=emit)
 
     use_menubar = (
@@ -437,10 +457,15 @@ def cmd_watch(ctx: AppContext, _args: argparse.Namespace) -> int:
     )
     if use_menubar:
         emit("Watcher ready")
+        enable_captions = (
+            capture_backend == "swift_helper"
+            and swift_live_transcript
+        )
         app = EchoboxMenuBar(
             watcher,
             transcript_dir=ctx.transcript_dir,
             report_dir=ctx.report_dir,
+            enable_caption_panel=enable_captions,
         )
         try:
             app.run()

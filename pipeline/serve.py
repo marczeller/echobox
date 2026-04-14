@@ -213,8 +213,8 @@ class ReportHandler(http.server.BaseHTTPRequestHandler):
         else:
             report_list = '<p class="empty">No reports yet. Run echobox enrich + echobox publish first.</p>'
 
-        html = REPORT_LIST_HTML.replace("REPORT_LIST", report_list)
-        self._send_html(html)
+        page = REPORT_LIST_HTML.replace("REPORT_LIST", report_list)
+        self._send_html(page)
 
     def do_GET(self):
         if not self._is_authenticated():
@@ -282,7 +282,7 @@ class ReportHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Location", "/")
             self.send_header(
                 "Set-Cookie",
-                f"{COOKIE_NAME}={valid_token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age={COOKIE_MAX_AGE}",
+                f"{COOKIE_NAME}={valid_token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={COOKIE_MAX_AGE}",
             )
             self.send_header("Cache-Control", "no-store")
             self._set_default_headers()

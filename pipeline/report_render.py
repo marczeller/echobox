@@ -6,20 +6,13 @@ import argparse
 import datetime as _datetime
 import html
 import re
-from dataclasses import dataclass
 from pathlib import Path
 
 ACTION_RE = re.compile(r"^\s*[-*]\s+\*\*\[(?P<owner>[^\]]+)\]\*\*\s+(?P<body>.+?)\s*$")
 SPEAKER_RE = re.compile(
     r"^(?:\[(?P<timestamp>\d{1,2}:\d{2}(?::\d{2})?)\]\s+)?(?P<label>[A-Z][A-Z0-9_ ]+):\s*(?P<text>.+)$"
 )
-
-
-@dataclass
-class Stats:
-    participant_count: int
-    action_item_count: int
-    meeting_duration: str
+EMAIL_RE = re.compile(r"^\S+@\S+$")
 
 
 def _slugify(value: str) -> str:
@@ -46,57 +39,6 @@ def _inline_format(text: str) -> str:
     escaped = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", escaped)
     escaped = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"<em>\1</em>", escaped)
     return escaped
-
-
-def _extract_duration(enrichment: str, transcript: str = "") -> str:
-    for source in (enrichment, transcript):
-        duration_match = re.search(r"\b(\d+\s*(?:min|mins|minutes|hr|hrs|hours))\b", source, re.IGNORECASE)
-        if duration_match:
-            return duration_match.group(1)
-        clock_match = re.search(r"\b(\d{1,2}:\d{2})\b", source)
-        if clock_match:
-            return clock_match.group(1)
-    return "Not recorded"
-
-
-def extract_stats(enrichment: str, transcript: str = "") -> Stats:
-    participant_count = 0
-    action_item_count = 0
-    in_speaker_table = False
-
-    for raw_line in enrichment.splitlines():
-        stripped = raw_line.strip()
-        if stripped == "## Speaker Identification":
-            in_speaker_table = True
-            continue
-        if in_speaker_table:
-            if not stripped.startswith("|"):
-                in_speaker_table = False
-            elif stripped and not all(set(cell.strip()) <= {"-", ":"} for cell in stripped.strip("|").split("|")):
-                cells = [cell.strip() for cell in stripped.strip("|").split("|")]
-                if cells and cells[0] != "Speaker Label":
-                    participant_count += 1
-        if ACTION_RE.match(raw_line):
-            action_item_count += 1
-
-    return Stats(
-        participant_count=participant_count,
-        action_item_count=action_item_count,
-        meeting_duration=_extract_duration(enrichment, transcript),
-    )
-
-
-def render_stat_cards(stats: Stats) -> str:
-    cards = [
-        ("Participants", str(stats.participant_count or 0)),
-        ("Action Items", str(stats.action_item_count or 0)),
-        ("Meeting Duration", stats.meeting_duration),
-    ]
-    return "".join(
-        f'<article class="stat-card"><div class="stat-label">{html.escape(label)}</div>'
-        f'<div class="stat-value">{html.escape(value)}</div></article>'
-        for label, value in cards
-    )
 
 
 def _render_table(rows: list[list[str]]) -> str:
@@ -286,15 +228,56 @@ def render_transcript(text: str, speaker_map: dict[str, str] | None = None) -> s
     return "".join(parts)
 
 
+def _replace_speaker_section(enrichment: str, speaker_map: dict[str, str]) -> str:
+    """Strip the Speaker Identification section and inject a one-line Speakers list.
+
+    The table in the raw .md is preserved for archival and for extract_speaker_map,
+    but the rendered HTML gets a compact one-liner instead.
+    """
+    clean_names: list[str] = []
+    seen: set[str] = set()
+    for name in speaker_map.values():
+        stripped = name.strip()
+        if not stripped or EMAIL_RE.match(stripped.split()[0]):
+            continue
+        if stripped in seen:
+            continue
+        seen.add(stripped)
+        clean_names.append(stripped)
+
+    speakers_line = f"**Speakers:** {', '.join(clean_names)}." if clean_names else ""
+
+    lines = enrichment.splitlines()
+    out: list[str] = []
+    i = 0
+    replaced = False
+    while i < len(lines):
+        stripped = lines[i].strip()
+        if not replaced and stripped == "## Speaker Identification":
+            if speakers_line:
+                out.append(speakers_line)
+                out.append("")
+            i += 1
+            while i < len(lines):
+                next_stripped = lines[i].strip()
+                if next_stripped.startswith("## "):
+                    break
+                i += 1
+            replaced = True
+            continue
+        out.append(lines[i])
+        i += 1
+    return "\n".join(out)
+
+
 def render_report(template: str, enrichment: str, transcript: str, title: str, today: str | None = None) -> str:
-    stats = extract_stats(enrichment, transcript)
     speaker_map = extract_speaker_map(enrichment)
+    enrichment_for_html = _replace_speaker_section(enrichment, speaker_map)
     today = today or _datetime.date.today().isoformat()
     rendered = template
     rendered = rendered.replace("{{TITLE}}", f"Call Report: {html.escape(title)}")
     rendered = rendered.replace("{{DATE}}", html.escape(today))
-    rendered = rendered.replace("{{STAT_CARDS}}", render_stat_cards(stats))
-    rendered = rendered.replace("{{ENRICHMENT_CONTENT}}", md_to_html(enrichment))
+    rendered = rendered.replace("{{ENRICHMENT_CONTENT}}", md_to_html(enrichment_for_html))
     rendered = rendered.replace("{{TRANSCRIPT_CONTENT}}", render_transcript(transcript, speaker_map))
     return rendered
 

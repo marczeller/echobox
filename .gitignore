@@ -40,3 +40,25 @@ quality/composite-score.sh
 /tmp/
 autoresearch-verify.sh
 autoresearch-results.tsv
+
+# Secrets / local state
+.env
+.env.*
+!.env.example
+
+# Enrolled speaker embeddings (biometric)
+voices/
+
+# Private keys / certs
+*.key
+*.crt
+*.pem
+*.ts.net.*
+
+# Backup files
+*.bak
+*.bak.*
+
+# Swift build artifacts
+swift/**/.build/
+system-audio-tap/.build/

@@ -20,11 +20,16 @@ Produce a structured analysis with these exact sections:
 2-3 sentence executive summary. Name the participants and the purpose of the call.
 
 ## Speaker Identification
-Map each SPEAKER_XX to a real name. Use the known_attendees list and what each person discusses.
+Map each SPEAKER_XX to a real name. Prefer the known_attendees list. Match by what each
+person discusses, their expertise, and organization references in the transcript.
+
+If you cannot match a speaker to a known_attendees entry with at least medium confidence,
+label them by role only (e.g. "1kx team member", "Unidentified questioner"). NEVER use an
+email address as a speaker name. NEVER invent a full name not present in known_attendees.
 
 | Speaker Label | Identified As | Confidence |
 |---|---|---|
-| SPEAKER_00 | Name | high/medium/low |
+| SPEAKER_00 | Name or role label | high/medium/low |
 
 ## Key Decisions
 Bullet list of anything decided or committed to. Only include actual decisions, not discussion.
@@ -34,7 +39,10 @@ Each action item must have an owner and a deadline (if mentioned). Format:
 - **[Owner]** Action item description *(by [date] if mentioned)*
 
 ## Follow-ups Needed
-What was discussed but not resolved? Who needs to follow up and on what?
+Open items that were raised but not resolved during this meeting. Each bullet must be
+something that requires future action or an answer. Do NOT include meta-commentary about
+prior meetings, summaries of what was already covered, or observations about transcript
+quality. If there are no open follow-ups, write "None."
 
 ## Context for Next Meeting
 One paragraph: what should the participants prepare or know before the next conversation?
