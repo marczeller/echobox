@@ -74,10 +74,20 @@ workstation_ssh: ""
 # Use environment variable: ECHOBOX_WORKSTATION overrides this.
 
 # --- Data directories ---
-transcript_dir: ~/echobox-data/transcripts
+transcript_dir: ~/echobox-data/transcripts  # .txt files
+audio_dir: ~/echobox-data/audio              # .wav, -local.wav, -remote.wav
 enrichment_dir: ~/echobox-data/enrichments
 report_dir: ~/echobox-data/reports
 log_dir: ~/echobox-data/logs
+
+# --- Audio housekeeping ---
+# Tiered retention: raw dual-track artifacts age out quickly, mixed audio
+# is preserved longer (or forever). Set either value to 0 to disable that
+# tier. The menu bar watcher runs a sweep every `sweep_interval_minutes`.
+cleanup:
+  raw_track_retention_days: 7     # delete *-local.wav / *-remote.wav after N days (0 = off)
+  mixed_audio_retention_days: 0   # delete <slug>.wav after M days (0 = keep forever)
+  sweep_interval_minutes: 60      # how often the watcher runs the cleanup pass
 
 # =============================================================================
 # Context Sources

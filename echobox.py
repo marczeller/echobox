@@ -57,6 +57,10 @@ class AppContext:
         return Path(self.paths["TRANSCRIPT_DIR"])
 
     @property
+    def audio_dir(self) -> Path:
+        return Path(self.paths["AUDIO_DIR"])
+
+    @property
     def enrichment_dir(self) -> Path:
         return Path(self.paths["ENRICHMENT_DIR"])
 
@@ -79,7 +83,7 @@ def build_context(config_path: Path = DEFAULT_CONFIG) -> AppContext:
     except ConfigError:
         config = {}
     paths = read_config_module.resolve_paths(config_path)
-    for key in ("LOG_DIR", "TRANSCRIPT_DIR", "ENRICHMENT_DIR", "REPORT_DIR", "STATE_DIR"):
+    for key in ("LOG_DIR", "TRANSCRIPT_DIR", "AUDIO_DIR", "ENRICHMENT_DIR", "REPORT_DIR", "STATE_DIR"):
         Path(paths[key]).mkdir(parents=True, exist_ok=True)
     version = VERSION_FILE.read_text(encoding="utf-8").strip() if VERSION_FILE.exists() else "dev"
     return AppContext(REPO_DIR, config_path, version, config, paths)
@@ -437,6 +441,7 @@ def cmd_watch(ctx: AppContext, _args: argparse.Namespace) -> int:
 
     recorder = EchoboxRecorder(
         output_dir=ctx.transcript_dir,
+        audio_dir=ctx.audio_dir,
         whisper_model=get_config(ctx.config, "whisper_model", "mlx-community/whisper-large-v3-mlx"),
         whisper_language=get_config(ctx.config, "whisper_language", None) or None,
         logger=emit,
@@ -461,10 +466,22 @@ def cmd_watch(ctx: AppContext, _args: argparse.Namespace) -> int:
             capture_backend == "swift_helper"
             and swift_live_transcript
         )
+        def _int_cfg(key: str, default: int) -> int:
+            raw = get_config(ctx.config, key, str(default))
+            try:
+                return int(raw)
+            except (TypeError, ValueError):
+                return default
+
         app = EchoboxMenuBar(
             watcher,
             transcript_dir=ctx.transcript_dir,
+            audio_dir=ctx.audio_dir,
             report_dir=ctx.report_dir,
+            voices_dir=ctx.repo_dir / "voices",
+            raw_retention_days=_int_cfg("cleanup.raw_track_retention_days", 7),
+            mixed_retention_days=_int_cfg("cleanup.mixed_audio_retention_days", 0),
+            sweep_interval_minutes=_int_cfg("cleanup.sweep_interval_minutes", 60),
             enable_caption_panel=enable_captions,
         )
         try:
@@ -632,9 +649,34 @@ def cmd_clean(ctx: AppContext, args: argparse.Namespace) -> int:
             str(ctx.enrichment_dir),
             str(ctx.report_dir),
             str(ctx.log_dir),
+            str(ctx.audio_dir),
             *args.clean_args,
         ],
     )
+
+
+def cmd_enroll_voice(ctx: AppContext, args: argparse.Namespace) -> int:
+    """Thin wrapper around `pipeline/speaker_id.py enroll <slug> <wav> <name>`."""
+    return subprocess.run(
+        [
+            sys.executable,
+            str(ctx.repo_dir / "pipeline" / "speaker_id.py"),
+            "enroll",
+            args.slug,
+            args.wav,
+            args.name,
+        ],
+        check=False,
+    ).returncode
+
+
+def cmd_voices(ctx: AppContext, args: argparse.Namespace) -> int:
+    """Passthrough to `pipeline/speaker_id.py` list / delete subcommands."""
+    extra = args.voices_args or ["list"]
+    return subprocess.run(
+        [sys.executable, str(ctx.repo_dir / "pipeline" / "speaker_id.py"), *extra],
+        check=False,
+    ).returncode
 
 
 def cmd_config(ctx: AppContext, _args: argparse.Namespace) -> int:
@@ -835,6 +877,12 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("test", add_help=False)
     clean_parser = subparsers.add_parser("clean", add_help=False)
     clean_parser.add_argument("clean_args", nargs=argparse.REMAINDER)
+    enroll_parser = subparsers.add_parser("enroll-voice", add_help=False)
+    enroll_parser.add_argument("slug")
+    enroll_parser.add_argument("wav")
+    enroll_parser.add_argument("name")
+    voices_parser = subparsers.add_parser("voices", add_help=False)
+    voices_parser.add_argument("voices_args", nargs=argparse.REMAINDER)
     serve_parser = subparsers.add_parser("serve", add_help=False)
     serve_parser.add_argument("--port", type=int, default=8090)
     serve_parser.add_argument("--tunnel", choices=["tailscale", "bore", ""], default="")
@@ -868,6 +916,7 @@ def main(argv: list[str] | None = None) -> int:
         "config": cmd_config,
         "demo": cmd_demo,
         "enrich": cmd_enrich,
+        "enroll-voice": cmd_enroll_voice,
         "fit": cmd_fit,
         "list": cmd_list,
         "open": cmd_open,
@@ -884,6 +933,7 @@ def main(argv: list[str] | None = None) -> int:
         "test": cmd_test,
         "transcribe": cmd_transcribe,
         "version": cmd_version,
+        "voices": cmd_voices,
         "watch": cmd_watch,
     }
     return handlers[args.command](ctx, args)

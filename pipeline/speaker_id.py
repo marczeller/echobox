@@ -248,6 +248,9 @@ def main() -> int:
 
     p_list = sub.add_parser("list", help="List enrolled voices")
 
+    p_delete = sub.add_parser("delete", help="Delete an enrolled voice by slug")
+    p_delete.add_argument("slug", help="slug of the voice to remove (e.g. marc)")
+
     p_test = sub.add_parser("test", help="Identify speakers in a diarized WAV (JSON output)")
     p_test.add_argument("wav")
     p_test.add_argument("segments_json", help="JSON with list of {start,end,speaker}")
@@ -265,6 +268,17 @@ def main() -> int:
             return 0
         for v in voices:
             print(f"  {v['slug']:16s} {v['name']}")
+        return 0
+    if args.cmd == "delete":
+        slug = args.slug.strip().lower()
+        npy_path = VOICES_DIR / f"{slug}.npy"
+        json_path = VOICES_DIR / f"{slug}.json"
+        if not npy_path.exists() and not json_path.exists():
+            print(f"No voice enrolled as {slug!r}.")
+            return 1
+        npy_path.unlink(missing_ok=True)
+        json_path.unlink(missing_ok=True)
+        print(f"Deleted voice {slug}")
         return 0
     if args.cmd == "test":
         segs = json.loads(Path(args.segments_json).read_text())

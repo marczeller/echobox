@@ -39,7 +39,7 @@ resolve_paths() {
     while IFS='=' read -r key value; do
         [ -n "$key" ] || continue
         case "$key" in
-            DATA_DIR|TRANSCRIPT_DIR|ENRICHMENT_DIR|REPORT_DIR|LOG_DIR)
+            DATA_DIR|TRANSCRIPT_DIR|AUDIO_DIR|ENRICHMENT_DIR|REPORT_DIR|LOG_DIR)
                 printf -v "$key" '%s' "$value" ;;
         esac
     done <<EOF
@@ -47,11 +47,12 @@ $paths_output
 EOF
     DATA_DIR="${DATA_DIR:-$HOME/echobox-data}"
     TRANSCRIPT_DIR="${TRANSCRIPT_DIR:-$DATA_DIR/transcripts}"
+    AUDIO_DIR="${AUDIO_DIR:-$DATA_DIR/audio}"
     ENRICHMENT_DIR="${ENRICHMENT_DIR:-$DATA_DIR/enrichments}"
     REPORT_DIR="${REPORT_DIR:-$DATA_DIR/reports}"
     LOG_DIR="${LOG_DIR:-$DATA_DIR/logs}"
     STATE_DIR="${STATE_DIR:-$(dirname "$REPORT_DIR")}"
-    mkdir -p "$LOG_DIR" "$TRANSCRIPT_DIR" "$ENRICHMENT_DIR" "$REPORT_DIR" "$STATE_DIR"
+    mkdir -p "$LOG_DIR" "$TRANSCRIPT_DIR" "$AUDIO_DIR" "$ENRICHMENT_DIR" "$REPORT_DIR" "$STATE_DIR"
 }
 
 resolve_paths

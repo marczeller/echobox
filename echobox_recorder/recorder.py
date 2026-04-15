@@ -145,6 +145,42 @@ def macbook_pro_mic_device(sd_module: Any | None = None) -> int | None:
     return None
 
 
+def current_output_device() -> str | None:
+    """Return the lowercase name of the current system audio output device,
+    or None if SwitchAudioSource isn't installed or the query fails."""
+    sas = shutil.which("SwitchAudioSource")
+    if not sas:
+        return None
+    try:
+        result = subprocess.run(
+            [sas, "-c", "-t", "output"],
+            capture_output=True, text=True, timeout=3, check=False,
+        )
+    except Exception:
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip().lower() or None
+
+
+def audio_routing_ok() -> tuple[bool, str]:
+    """Read-only health check: is the system output routed through BlackHole
+    (typically via a Multi-Output Device)?
+
+    Returns (True, "") when routing looks correct, or (False, reason) when
+    the current output device will bypass BlackHole — causing the recorder
+    to capture silence on the remote track. Used by the menu bar to surface
+    a visible warning without auto-switching the output.
+    """
+    current = current_output_device()
+    if current is None:
+        # SwitchAudioSource missing — we can't verify, so don't alarm.
+        return True, ""
+    if "multi-output" in current or "blackhole" in current:
+        return True, ""
+    return False, f"Output is {current!r} — BlackHole won't receive audio"
+
+
 def ensure_output_routes_to_blackhole(logger: Callable[[str], None] | None = None) -> None:
     """If BlackHole is the input device, ensure system output routes audio through it.
 
@@ -221,6 +257,7 @@ class EchoboxRecorder:
         output_dir: str | Path,
         whisper_model: str,
         *,
+        audio_dir: str | Path | None = None,
         sample_rate: int = 16_000,
         channels: int = 1,
         audio_device: int | str | None = None,
@@ -234,6 +271,9 @@ class EchoboxRecorder:
         swift_helper_whisperkit_model: str = "openai_whisper-tiny",
     ) -> None:
         self.output_dir = Path(output_dir).expanduser()
+        self.audio_dir = (
+            Path(audio_dir).expanduser() if audio_dir is not None else self.output_dir
+        )
         self.whisper_model = whisper_model
         self.sample_rate = sample_rate
         self.channels = channels
@@ -438,7 +478,8 @@ class EchoboxRecorder:
                 mbp_name = "MacBook Pro Microphone"
             candidates.append((mbp_idx, mbp_name, 48000))
 
-        local_wav_path = self.output_dir / f"{transcript_id}-local.wav"
+        self.audio_dir.mkdir(parents=True, exist_ok=True)
+        local_wav_path = self.audio_dir / f"{transcript_id}-local.wav"
         last_error: str = ""
         for dev_idx, dev_name, sr in candidates:
             try:
@@ -511,7 +552,8 @@ class EchoboxRecorder:
         started_at = datetime.now().astimezone()
         transcript_id = f"{started_at.strftime('%Y-%m-%d_%H-%M')}_{slugify_hint(session_hint)}"
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        wav_path = self.output_dir / f"{transcript_id}.wav"
+        self.audio_dir.mkdir(parents=True, exist_ok=True)
+        wav_path = self.audio_dir / f"{transcript_id}.wav"
         transcript_path = self.output_dir / f"{transcript_id}.txt"
         device = self.resolve_input_device()
         # If recording via BlackHole, ensure system output routes through it
@@ -526,7 +568,7 @@ class EchoboxRecorder:
         temp_fd, temp_path_raw = tempfile.mkstemp(
             suffix=".wav",
             prefix=f"{transcript_id}-",
-            dir=self.output_dir,
+            dir=self.audio_dir,
         )
         os.close(temp_fd)
         temp_wav_path = Path(temp_path_raw)
@@ -1005,8 +1047,8 @@ class EchoboxRecorder:
             remote_track_path.replace(session.wav_path)
             return
 
-        remote_final = self.output_dir / f"{session.transcript_id}-remote.wav"
-        local_final = self.output_dir / f"{session.transcript_id}-local.wav"
+        remote_final = self.audio_dir / f"{session.transcript_id}-remote.wav"
+        local_final = self.audio_dir / f"{session.transcript_id}-local.wav"
         try:
             remote_track_path.replace(remote_final)
         except Exception as exc:

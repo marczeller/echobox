@@ -46,6 +46,10 @@ def resolve_paths(config_path: Path) -> dict[str, str]:
             "ECHOBOX_TRANSCRIPT_DIR",
             expand_path(config.get("transcript_dir", str(Path(data_dir) / "transcripts"))),
         ),
+        "AUDIO_DIR": os.environ.get(
+            "ECHOBOX_AUDIO_DIR",
+            expand_path(config.get("audio_dir", str(Path(data_dir) / "audio"))),
+        ),
         "ENRICHMENT_DIR": os.environ.get(
             "ECHOBOX_ENRICHMENT_DIR",
             expand_path(config.get("enrichment_dir", str(Path(data_dir) / "enrichments"))),
