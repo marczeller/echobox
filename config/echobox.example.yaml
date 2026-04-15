@@ -205,19 +205,17 @@ publish:
   #   "claude" — uses Claude CLI for designed reports (sends content to Anthropic API)
   engine: local
 
-  # How to share reports (all password-gated):
-  #   "local"  — save HTML files only, view with echobox open
-  #   "serve"  — built-in HTTP server (echobox serve), share URL + password
-  #              add --tunnel tailscale or --tunnel bore for remote access
-  #   "vercel" — deploy to Vercel CDN (report leaves machine)
+  # How to share reports:
+  #   "local"  — save HTML files only, view with `./echobox open`
+  #   "vercel" — deploy to Vercel CDN (report leaves your machine)
+  # To serve local reports over HTTP with a password gate, run
+  # `./echobox serve [--port N] [--tunnel tailscale|bore]`. The serve port
+  # is a CLI flag, not a config key — it is NOT read from here.
   platform: local
 
-  # Password for report access (serve and vercel modes).
-  # Set a real password before using echobox serve or vercel deploy.
+  # Password for report access (vercel gate + `./echobox serve` gate).
+  # Set a real password before exposing reports.
   password: ""
-
-  # Server port for echobox serve (default: 8090)
-  serve_port: 8091
 
   # Vercel team scope (only needed for vercel platform)
   scope: ""

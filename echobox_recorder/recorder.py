@@ -932,9 +932,12 @@ class EchoboxRecorder:
 
         try:
             torch, pipeline_cls = self._import_diarization_dependencies()
+            # Pinned revision: upstream compromise can't swap in a malicious
+            # pickle on next fetch without changing this SHA.
             pipeline = pipeline_cls.from_pretrained(
                 "pyannote/speaker-diarization-3.1",
                 token=hf_token,
+                revision="84fd25912480287da0247647c3d2b4853cb3ee5d",
             )
             pipeline.to(self._diarization_device(torch))
             raw_output = pipeline(str(wav_path))

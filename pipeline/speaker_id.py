@@ -18,6 +18,10 @@ from typing import Any
 
 VOICES_DIR = Path(__file__).resolve().parent.parent / "voices"
 EMBED_MODEL = "pyannote/wespeaker-voxceleb-resnet34-LM"
+# Pin the model to a known-good commit so a compromised upstream repo can't
+# swap in a malicious pickle on the next fetch. Bump deliberately after
+# reviewing upstream changes and verifying the loaded model still works.
+EMBED_MODEL_REVISION = "837717ddb9ff5507820346191109dc79c958d614"
 MATCH_THRESHOLD = 0.55
 MIN_SEGMENT_DURATION = 1.0
 
@@ -45,11 +49,15 @@ def _load_embedding_inference():
         token_file = Path.home() / ".cache" / "huggingface" / "token"
         if token_file.exists():
             token = token_file.read_text().strip()
-    kwargs = {"token": token} if token else {}
+    kwargs: dict[str, Any] = {"revision": EMBED_MODEL_REVISION}
+    if token:
+        kwargs["token"] = token
     try:
         model = Model.from_pretrained(EMBED_MODEL, **kwargs)
     except Exception as exc:
-        raise SpeakerIdError(f"failed to load {EMBED_MODEL}: {exc}") from exc
+        raise SpeakerIdError(
+            f"failed to load {EMBED_MODEL}@{EMBED_MODEL_REVISION[:12]}: {exc}"
+        ) from exc
     inference = Inference(model, window="whole")
     try:
         import torch
@@ -270,9 +278,19 @@ def main() -> int:
             print(f"  {v['slug']:16s} {v['name']}")
         return 0
     if args.cmd == "delete":
-        slug = args.slug.strip().lower()
-        npy_path = VOICES_DIR / f"{slug}.npy"
-        json_path = VOICES_DIR / f"{slug}.json"
+        # Sanitize the slug the same way enrollment does (alnum + '-' only)
+        # and then verify both resolved paths stay inside VOICES_DIR so a
+        # crafted slug like '../../.ssh/id_rsa' can't escape the sandbox.
+        slug = _slug(args.slug)
+        voices_root = VOICES_DIR.resolve()
+        npy_path = (VOICES_DIR / f"{slug}.npy").resolve()
+        json_path = (VOICES_DIR / f"{slug}.json").resolve()
+        for candidate in (npy_path, json_path):
+            try:
+                candidate.relative_to(voices_root)
+            except ValueError:
+                print(f"Refusing to delete outside voices dir: {candidate}")
+                return 2
         if not npy_path.exists() and not json_path.exists():
             print(f"No voice enrolled as {slug!r}.")
             return 1

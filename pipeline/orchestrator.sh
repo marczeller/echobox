@@ -291,6 +291,15 @@ elif [ -n "$NOTIFY_CMD" ]; then
     export ECHOBOX_REPORT_SUMMARY="$MEETING_SUMMARY"
 
     NOTIFY_LOG="$LOG_DIR/notifications.log"
+    # The audit log captures the full stdout+stderr of the notify command,
+    # which can include passwords embedded in the command string (e.g. the
+    # default config pins a shared report password in the title). Keep it
+    # user-only readable so other local accounts can't skim secrets out.
+    if [ ! -e "$NOTIFY_LOG" ]; then
+        : > "$NOTIFY_LOG"
+    fi
+    chmod 600 "$NOTIFY_LOG" 2>/dev/null || true
+    chmod 700 "$LOG_DIR" 2>/dev/null || true
     NOTIFY_TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     {
         printf '=== %s  %s ===\n' "$NOTIFY_TS" "$TRANSCRIPT_ID"

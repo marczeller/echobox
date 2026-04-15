@@ -49,11 +49,25 @@ autoresearch-results.tsv
 # Enrolled speaker embeddings (biometric)
 voices/
 
-# Private keys / certs
+# Private keys / certs (common bare names + standard extensions)
 *.key
 *.crt
 *.pem
+*.p12
+*.pfx
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+id_ecdsa
+id_ecdsa.pub
+id_dsa
+id_dsa.pub
 *.ts.net.*
+
+# Local config overlays
+config/*.local.yaml
+config/*.local.yml
 
 # Backup files
 *.bak
