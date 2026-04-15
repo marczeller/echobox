@@ -2,9 +2,9 @@
 
 > This file provides project instructions for Claude Code. See also: `AGENTS.md` for the same project guidance in tool-agnostic format.
 
-Echobox records calls, transcribes them locally, diarizes speakers, enriches the transcript with a local MLX server plus optional project context, and publishes an HTML report. The macOS path is end-to-end: `echobox watch` uses the built-in recorder, captures audio via BlackHole (system audio — both sides of calls), transcribes locally, and triggers the pipeline automatically.
+Echobox records calls, transcribes them locally, diarizes speakers, identifies enrolled voices, enriches the transcript with a local MLX server plus optional project context, and publishes an HTML report. The macOS path is end-to-end: `echobox watch` uses the built-in recorder with dual-stream capture (BlackHole for the remote side + local mic for the user's voice), mixes both tracks via ffmpeg `amix`, transcribes locally, and triggers the pipeline automatically.
 
-**CRITICAL: BlackHole + Multi-Output Device is REQUIRED.** The recorder auto-selects BlackHole as input to capture both sides of calls. AirPods have zero speaker bleed — mic-only captures ONLY the local user's voice. Multi-Output Device (AirPods + BlackHole 2ch) must be configured in Audio MIDI Setup so the user hears audio AND BlackHole captures it. NEVER suggest removing BlackHole or going mic-only.
+**CRITICAL: BlackHole + Multi-Output Device is REQUIRED for the remote side.** The recorder opens two parallel sounddevice InputStreams — one on BlackHole 2ch (captures other participants via the system audio loopback) and one on the user's local mic (AirPods / USB / built-in, auto-selected from the macOS default input device). Multi-Output Device (AirPods + BlackHole 2ch) must be configured in Audio MIDI Setup so the user hears audio AND BlackHole captures it. NEVER suggest removing BlackHole.
 
 ## 30-Second Mental Model
 
@@ -13,29 +13,65 @@ Echobox records calls, transcribes them locally, diarizes speakers, enriches the
 - `./echobox fit` writes recommended `whisper_model` and `mlx_model` values into `config/echobox.yaml`.
 - `./echobox demo` exercises the enrichment flow without requiring a running LLM server.
 - `./echobox watch` is the real automatic pipeline entrypoint on macOS only.
+- **Dual-stream capture**: recorder writes `<slug>.wav` (mixed), `<slug>-remote.wav` (BlackHole), and `<slug>-local.wav` (AirPods/mic) to `~/echobox-data/audio/`. If the local mic stream can't open (PortAudio `-9986`, AirPods SCO link-mode race), the recorder walks a rate ladder `[reported, 48000, 16000, 44100]` and falls back to the MacBook Pro built-in mic at 48000Hz before giving up.
+- **Voice ID**: `pipeline/speaker_id.py` extracts wespeaker-voxceleb-resnet34-LM embeddings per diarized segment and replaces `SPEAKER_XX` with enrolled display names when cosine similarity ≥ 0.55. Enroll via `./echobox enroll-voice <slug> <wav> <display name>`. Enrolled embeddings live in `voices/<slug>.{npy,json}` (gitignored — biometric data).
+- **Pipeline steps**: `[1/5]` LLM enrichment → `[1.5/5]` slug derivation from enrichment output → `[2/5]` optional workstation sync → `[3/5]` HTML publish → `[4/5]` optional meeting-notes rsync → `[5/5]` notification. Notification attempts are audited to `~/echobox-data/logs/notifications.log` with full stdout/stderr/exit code.
 - `./echobox serve` runs a password-gated HTTP server for locally published reports.
 - Publishing has two separate knobs:
   - `publish.engine`: `local` or `claude` for HTML generation.
   - `publish.platform`: `local` or `vercel` for where the report is published.
   - `echobox serve --tunnel tailscale|bore` is separate from publish and shares local reports over HTTP.
 
+## Data Directory Layout
+
+```
+~/echobox-data/
+  transcripts/   # .txt transcripts (one per call)
+  audio/         # <slug>.wav, <slug>-local.wav, <slug>-remote.wav
+  enrichments/   # <slug>-enriched.md + sidecar .json
+  reports/       # <slug>-enriched/report.html
+  logs/          # watcher.log, pipeline.log, notifications.log
+  sessions/      # swift_helper backend: per-session dir (opt-in)
+```
+
+Audio is split from transcripts so retention can target the large files without touching the text outputs. Legacy installs (pre-audio-dir) have `.wav` files still inside `transcripts/`; the cleanup sweep walks both locations so nothing is missed.
+
+## Updating Recorder Code
+
+**If you edit `echobox_recorder/recorder.py`, you MUST kickstart the launchd watcher afterwards** — Python modules are loaded once at process start. Editing the file on disk has zero effect on the running watcher until restart:
+
+```bash
+launchctl kickstart -k gui/$(id -u)/com.echobox.watcher
+```
+
+This is the #1 source of "I changed the code but nothing happened" confusion. The orchestrator shell (`pipeline/orchestrator.sh`) is re-read per pipeline run, so shell-only edits apply immediately; Python-level edits do not.
+
+## Microphone TCC on First Run
+
+macOS Microphone permission (TCC) must be granted to the Python process before the local mic stream can open. launchd-managed processes CANNOT trigger the permission dialog themselves, so the first run must be from **Terminal.app** directly (not over SSH, not via launchd). Run `./echobox watch` manually once, click **Allow** on the TCC prompt, then load the launchd plist.
+
 ## Actual Setup Path
 
 If a user says "set up Echobox on my machine", follow this order:
 
 1. Run `./install.sh`.
-2. Run `./echobox status`.
-3. Edit `config/echobox.yaml` directly if needed.
-4. Re-run `./echobox fit` only if you want to change or re-benchmark model choices.
-5. Start the local LLM server that matches `mlx_url`.
-6. Run `./echobox demo`.
-7. Run `./echobox watch`.
+2. Install **BlackHole 2ch** via Homebrew and create a **Multi-Output Device** in Audio MIDI Setup (AirPods/headphones + BlackHole 2ch), set it as the system Output.
+3. Create `~/echobox/.env` with `HF_TOKEN=hf_...` (Read scope). **Accept the licenses** for `pyannote/speaker-diarization-3.1` and `pyannote/wespeaker-voxceleb-resnet34-LM` on huggingface.co while logged in with the same token.
+4. Run `./echobox status`.
+5. Edit `config/echobox.yaml` directly if needed (including the `audio_dir` and `cleanup:` sections if you want custom retention policy).
+6. Re-run `./echobox fit` only if you want to change or re-benchmark model choices.
+7. Start the local LLM server that matches `mlx_url`.
+8. Run `./echobox demo`.
+9. **First run `./echobox watch` from Terminal.app directly** (not SSH, not launchd yet) so macOS can show the Microphone TCC prompt. Click **Allow**.
+10. Load the launchd plist so the watcher auto-starts on login.
+11. Optionally enroll voices: `./echobox enroll-voice marc ref.wav "Marc Zeller"`.
 
 Important:
 
 - `./install.sh` already creates `config/echobox.yaml`. If you run `./echobox setup` after `./install.sh`, the wizard exits early because the config already exists.
 - Use `./echobox setup` only when the user wants the minimal interactive wizard and either has no config yet or is willing to delete `config/echobox.yaml` first.
 - Recording is built in; no external recorder patching is required.
+- **After any edit to `echobox_recorder/*.py`, kickstart the watcher** (see "Updating Recorder Code" above).
 
 ## Intelligent Setup (Agent Playbook)
 
@@ -83,19 +119,21 @@ These are the commands exposed by `./echobox` today:
 | `echobox publish <enrichment>` | Generate and optionally deploy an HTML report |
 | `echobox serve [--port N] [--tunnel tailscale|bore]` | Serve local reports with a password gate |
 | `echobox watch` | Start the built-in macOS watcher and recorder |
+| `echobox enroll-voice <slug> <wav> <name>` | Enroll a reference voice for speaker identification |
+| `echobox voices [list\|delete <slug>]` | Manage enrolled voices (default action is list) |
 | `echobox setup` | Minimal interactive config wizard |
 | `echobox smart-setup [--with-calendar]` | Probe the machine and draft setup recommendations |
 | `echobox status` | Check dependencies, config, model server reachability, and data dirs |
 | `echobox fit` | Benchmark and select Whisper and LLM models |
 | `echobox config` | Show parsed config values |
-| `echobox clean [--older N]` | Show disk usage, provide prune commands |
+| `echobox clean [--older N] [--prune] [--audio]` | Show disk usage, optionally prune (include `.wav` with `--audio`) |
 | `echobox quality` | Run pipeline and context quality checks |
 | `echobox demo` | Walk through the pipeline using fixtures |
 | `echobox test` | Run Python smoke tests |
 | `echobox version` | Print version |
 | `echobox help` | Show CLI help |
 
-Commands that were easy to miss in the old docs: `preview`, `actions`, `summary`, `quality`, `test`, and `serve`.
+Commands that were easy to miss in the old docs: `preview`, `actions`, `summary`, `quality`, `test`, `serve`, `enroll-voice`, and `voices`.
 
 ## Configuration
 
@@ -237,16 +275,20 @@ If a user says "my pipeline isn't working", start with this sequence:
 2. Run `./echobox config` to confirm parsed values.
 3. Run `./echobox demo` to separate prompt and report logic from live recording issues.
 4. Check logs in `~/echobox-data/logs/`:
-   - `watcher.log`
-   - `pipeline.log`
-   - `echobox.log`
-   - `echobox.err`
+   - `watcher.log` — recording lifecycle, dual-stream status, speaker ID results
+   - `pipeline.log` — [1/5]–[5/5] steps
+   - `notifications.log` — every [5/5] notify attempt with full stdout/stderr/exit code
+   - `echobox.log` / `echobox.err` — stdio from the launchd watcher
 5. Inspect `~/echobox-data/logs/watcher.log` for browser detection or recorder errors.
 
 Fast symptom mapping:
 
-- **Only one side of conversation in transcript**: BlackHole not selected or Multi-Output Device not configured. Check `watcher.log` for `device=` — must show BlackHole device index (not `default`). Fix: Audio MIDI Setup → Multi-Output Device (AirPods + BlackHole) → set as system output.
-- **Transcript full of repeated garbage** ("Takk for", "vib' vib'"): Whisper hallucinations on silence. The hallucination filter should catch this. If not, check `_filter_hallucinations()` in recorder.py. Setting `whisper_language` in config can also help.
+- **Only one side of conversation in transcript** / "VAD: no speech detected": BlackHole not receiving signal. Fix: Audio MIDI Setup → Multi-Output Device (AirPods + BlackHole 2ch) → set as system Output. The menu bar now surfaces a ⚠ **Audio routing** warning when this is broken; clicking it opens Audio MIDI Setup.
+- **My own voice is missing from the transcript**: local mic stream failed to open. Look for `Local stream open failed ... PaErrorCode -9986` in `watcher.log`. The recorder walks a rate ladder and falls back to MacBook Pro Mic — if ALL fall back too, the ladder is exhausted. Common cause: AirPods in a transient SCO link-mode. Disconnect + reconnect AirPods (or just wait for a few seconds and let them settle) then kickstart the watcher.
+- **Voice ID didn't label me / "SPEAKER_XX" instead of Marc**: check `watcher.log` for `Speaker SPEAKER_00 -> <name> (cosine=...)`. If cosine is < 0.55, the enrolled reference isn't close enough to today's speech — re-enroll from a longer, more natural clip via `./echobox enroll-voice`.
+- **Transcript written but report never arrives on Telegram / Slack**: check `~/echobox-data/logs/notifications.log` for the exact exit code and command output. The orchestrator captures stdout+stderr, so the failure mode (HTML parse error, rate limit, SSH hang) is visible there.
+- **I edited `echobox_recorder/recorder.py` and nothing changed**: the running watcher has the OLD code in memory. Run `launchctl kickstart -k gui/$(id -u)/com.echobox.watcher` and re-test.
+- **Transcript full of repeated garbage** ("Takk for", "ご視聴ありがとうございました"): Whisper hallucinations on silence. The hallucination filter should catch this. If not, check `_filter_hallucinations()` in recorder.py. Setting `whisper_language` in config can also help.
 - **Enrichment in wrong language**: The pipeline auto-detects language from transcript content. If detection is wrong, check `detect_language()` in enrich.py or set `whisper_language` in config.
 - Call detection never starts on macOS: inspect the built-in watcher logs and browser/tab detection.
 - Transcript exists but enrichment fails: check `mlx_url`, model server status, and `HF_TOKEN`.
@@ -266,12 +308,15 @@ echobox/
     context-sources.example.yaml   Context source examples
 
   pipeline/
-    orchestrator.sh                Transcript -> enrich -> publish -> notify
+    orchestrator.sh                Transcript -> enrich -> publish -> notify pipeline
     calendar.sh                    Calendar lookup helper
     enrich.py                      Transcript/context -> LLM enrichment
     fit.py                         Hardware-aware model selection
     publish.sh                     HTML generation and optional Vercel publish
     read_config.py                 Config reader used by shell scripts
+    clean.py                       Retention / prune logic, incl. prune_audio()
+    speaker_id.py                  Voice enrollment + wespeaker identification
+    slug_from_enrichment.py        Slug derivation from LLM enrichment output
     markdown_preview.py            Terminal markdown preview fallback
 
   quality/
@@ -285,17 +330,26 @@ echobox/
 
   tests/
     fixtures/                      Demo sample inputs
-    test_*.py                      Smoke tests
+    test_*.py                      Smoke tests (incl. test_swift_helper.py)
 
   echobox_recorder/
     __init__.py                    Public recorder API and attribution
     watcher.py                     Built-in meeting detection for macOS
-    recorder.py                    Audio capture and local transcription (disk-backed)
+    recorder.py                    Dual-stream audio capture + local transcription
+    menubar.py                     rumps menu bar app (disk / routing / voices)
+    caption_panel.py               Swift helper live caption panel (NSPanel)
+    swift_helper.py                Swift capture helper backend (opt-in)
     LICENSE                        Upstream MIT attribution for vendored code
     *.diff                         Human-readable patch descriptions
 
+  swift/echobox-capture/           Opt-in Swift capture binary (WhisperKit / process-tap)
+  system-audio-tap/                Core Audio process-tap helper (macOS 14.2+)
+
+  voices/                          Enrolled speaker embeddings (GITIGNORED, biometric)
   scripts/
     run-echobox.sh                 Wrapper that sources .env before running echobox
+
+  .env.example                     HF_TOKEN template — copy to .env (gitignored)
 
   docs/
     setup.md                       Detailed platform-specific setup
@@ -308,7 +362,11 @@ echobox/
 
 - Preserve the attribution notice in `echobox_recorder/LICENSE` when modifying the vendored recorder code.
 - `templates/report.html` uses CSS variables for theming; do not hardcode colors into the template.
-- `config/echobox.yaml` may contain real passwords, tokens, and local paths; never commit user-specific values.
+- `config/echobox.yaml` may contain real passwords, tokens, and local paths; **never commit it** — it is gitignored.
+- **Never commit** `.env`, `voices/*.npy`, `voices/*.json`, `*.key`, `*.crt`, `*.ts.net.*`, `*.bak*`, or anything under `swift/**/.build/` or `system-audio-tap/.build/`. These are all covered by `.gitignore`; do not override them.
+- Enrolled voice embeddings are biometric data — treat them as PII. They live in `voices/` and must stay local.
+- When editing `echobox_recorder/*.py`, always kickstart the launchd watcher afterwards (see "Updating Recorder Code"). Editing the file without restarting leaves the old code running and creates "I changed it but nothing happened" confusion.
+- When staging files for commit, prefer explicit `git add <path>` over `git add -A` / `git add .` — sweeping everything risks staging `.env`, local `.wav` files, or Swift build artifacts if they ever slip past gitignore.
 
 ## See Also
 

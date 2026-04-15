@@ -2,26 +2,29 @@
 
 > **Alpha** — macOS only, for technical users comfortable with CLI tools and manual setup
 
-Echobox is a self-hosted call intelligence pipeline for macOS. It records calls, transcribes them with Whisper, identifies speakers, enriches the transcript with a local MLX server and project context, and publishes a clean HTML report you can search later.
+Echobox is a self-hosted call intelligence pipeline for macOS. It records both sides of a call in parallel (system audio + your own mic), transcribes with Whisper, identifies enrolled speakers by voice fingerprint, enriches the transcript with a local MLX server and project context, and publishes a clean HTML report you can search later.
 
-Core processing stays on your machine: transcription, diarization, and enrichment run locally. Optional integrations such as web lookup, Claude-powered report generation, and Vercel publishing only make outbound requests when you enable them.
+Core processing stays on your machine: transcription, diarization, voice identification, and enrichment run locally. Optional integrations such as web lookup, Claude-powered report generation, and Vercel publishing only make outbound requests when you enable them.
 
 ![Sample Report](docs/report-screenshot.png)
 
 ## What Happens When You Take a Call
 
 1. **Call detected** — Echobox watches your browser tabs and meeting apps for Meet/Zoom/Teams URLs
-2. **Audio captured** — BlackHole captures system audio (both sides of the call) to WAV. Requires Multi-Output Device (AirPods + BlackHole 2ch) in Audio MIDI Setup
+2. **Dual-stream capture** — two parallel audio streams are recorded: BlackHole captures the remote side (other participants' audio), and your local mic (AirPods / USB / built-in, auto-selected from the macOS default input) captures your own voice. Requires BlackHole + Multi-Output Device in Audio MIDI Setup
 3. **Call ends** — the built-in watcher stops recording and triggers the pipeline
-4. **Transcribed** — mlx-whisper transcribes the WAV locally with MLX/Metal on Apple Silicon
-5. **Speakers labeled** — pyannote.audio diarizes speakers (SPEAKER_00, SPEAKER_01...)
-6. **Calendar matched** — the transcript timestamp is matched to your calendar event, pulling attendee names
-7. **Context curated** — based on meeting type, relevant docs/messages/web context is gathered
-8. **LLM enrichment** — everything is sent to your local MLX model: transcript + attendees + context. It produces a structured analysis with speaker identification, decisions, action items with owners and deadlines, and follow-ups
-9. **JSON sidecar** — structured data (participants, decisions, action items) is extracted into a JSON file for integrations
-10. **HTML report** — a styled dark-themed report is generated with stat cards, speaker tables, and colored owner tags
-11. **Published** — report saved locally (or deployed to password-gated Vercel)
-12. **Notification** — optional webhook fires with the report URL and meeting summary
+4. **Tracks mixed** — ffmpeg `amix` combines remote + local tracks into `<slug>.wav`, with the raw tracks kept alongside as `<slug>-remote.wav` / `<slug>-local.wav`
+5. **Transcribed** — mlx-whisper transcribes the mixed WAV locally with MLX/Metal on Apple Silicon
+6. **Speakers diarized + identified** — pyannote.audio segments speakers, then wespeaker-voxceleb-resnet34-LM compares each segment against your enrolled voices (`./echobox enroll-voice ...`) and replaces SPEAKER_XX labels with real names when cosine similarity ≥ 0.55
+7. **Calendar matched** — the transcript timestamp is matched to your calendar event, pulling attendee names
+8. **Context curated** — based on meeting type, relevant docs/messages/web context is gathered
+9. **LLM enrichment** — everything is sent to your local MLX model: transcript + attendees + context. It produces a structured analysis with decisions, action items with owners and deadlines, and follow-ups
+10. **Slug derived** — a meaningful slug (e.g. `galaxydigital-meeting-2026-04-14`) is pulled from the enrichment output and renames the artifacts
+11. **JSON sidecar** — structured data is extracted into a JSON file for integrations
+12. **HTML report** — a styled dark-themed report is generated with stat cards, speaker tables, and colored owner tags
+13. **Published** — report saved locally (or deployed to password-gated Vercel)
+14. **Meeting notes sync** — when configured, the enrichment + transcript + report are rsync'd to a remote `meeting_notes` workspace
+15. **Notification** — optional webhook fires with the report URL and meeting summary. Delivery attempts are audited to `~/echobox-data/logs/notifications.log`
 
 After setup, the watcher and pipeline can run automatically from call end through report publish. End-to-end time depends heavily on your model choice and hardware. The menu bar icon shows recording status, and an "End Call" button lets you manually trigger processing without waiting for tab detection.
 
@@ -43,20 +46,21 @@ After the call: `echobox list` to browse, `echobox open` to view the report, `ec
 
 | Area | macOS |
 |------|:-----:|
+| Dual-stream recording (BlackHole + local mic) | Supported |
 | Transcription | Supported |
 | Speaker diarization | Supported |
+| Voice fingerprint identification (enrolled speakers) | Supported |
+| Optional Swift capture helper (WhisperKit live captions) | Opt-in |
 | Local MLX enrichment | Supported |
 | Calendar, docs, messages context | Supported with config |
 | Local HTML publishing | Supported |
 | Vercel publishing | Supported |
 | Auto call detection | Built in |
+| Tiered audio retention / auto-cleanup | Supported with config |
 
 ## Setup
 
-> Requires: macOS (Apple Silicon), Homebrew, Python 3.12+
-
-> Prerequisites:
-> Apple Silicon, Homebrew, `sounddevice`, a HuggingFace token for pyannote speaker diarization, and a local MLX model/server.
+> Requires: macOS (Apple Silicon), Homebrew, Python 3.12+, ffmpeg, SwitchAudioSource (for BlackHole routing), BlackHole 2ch + Multi-Output Device, a Hugging Face token, and a local MLX model/server.
 
 ```bash
 git clone https://github.com/marczeller/echobox.git && cd echobox
@@ -64,12 +68,25 @@ git clone https://github.com/marczeller/echobox.git && cd echobox
 ```
 
 1. Run `./install.sh`; on fresh installs it creates `config/echobox.yaml` and runs hardware fit
-2. Run `./echobox status` to see what is still missing
-3. Optionally run `./echobox smart-setup` to probe the machine and draft context-source recommendations
-4. Review and edit `config/echobox.yaml`
-5. Start your MLX model server
-6. Run `./echobox demo` to verify prompt and report generation
-7. Run `./echobox watch` to start recording
+2. Install BlackHole 2ch and create a Multi-Output Device (Audio MIDI Setup → **+** → Create Multi-Output Device → check **AirPods/headphones** AND **BlackHole 2ch**) → set it as the system Output
+3. Copy `.env.example` to `.env` and fill in `HF_TOKEN` — get a "Read" token at https://huggingface.co/settings/tokens. **Accept the license** for [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1) and [pyannote/wespeaker-voxceleb-resnet34-LM](https://huggingface.co/pyannote/wespeaker-voxceleb-resnet34-LM) on Hugging Face while logged in
+4. Run `./echobox status` to see what is still missing
+5. Optionally run `./echobox smart-setup` to probe the machine and draft context-source recommendations
+6. Review and edit `config/echobox.yaml`
+7. Start your MLX model server
+8. Run `./echobox demo` to verify prompt and report generation
+9. **First run**: launch `./echobox watch` from **Terminal.app** (not over SSH) so macOS can surface the Microphone TCC permission dialog. Click **Allow**. Only then install the launchd plist — launchd-managed processes can't trigger the TCC prompt themselves
+
+### Enroll your voice (optional but recommended)
+
+Voice identification replaces `SPEAKER_XX` labels with real names when the cosine similarity of a diarized segment against an enrolled reference ≥ 0.55.
+
+```bash
+# Record 30-60s of clean speech from just you, then enroll:
+./echobox enroll-voice marc /path/to/marc-reference.wav "Marc Zeller"
+```
+
+Or use the **Voices → Enroll new voice...** item in the menu bar, which opens a file picker. Enrolled voices live in `voices/<slug>.{npy,json}` (gitignored — biometric data).
 
 See a [sample report](docs/sample-report.html) generated from the demo fixtures.
 
@@ -85,6 +102,19 @@ See a [sample report](docs/sample-report.html) generated from the demo fixtures.
 | **6. Publishing** | A styled HTML report is generated locally or deployed |
 | **7. Notification** | An optional webhook posts the finished report URL |
 
+## Data Directory Layout
+
+```
+~/echobox-data/
+  transcripts/   # .txt transcripts (one per call)
+  audio/         # <slug>.wav, <slug>-local.wav, <slug>-remote.wav
+  enrichments/   # <slug>-enriched.md + sidecar .json
+  reports/       # <slug>-enriched/report.html
+  logs/          # watcher.log, pipeline.log, notifications.log
+```
+
+Audio is split from transcripts so retention and disk management only touch the large files. Tiered cleanup: set `cleanup.raw_track_retention_days` (default 7) to age out dual-track artifacts, and `cleanup.mixed_audio_retention_days` (default 0 = keep forever) for the final mix. The menu bar runs the sweep every `cleanup.sweep_interval_minutes` (default 60), or trigger it manually via **Disk → Prune old audio now**.
+
 ## Common Commands
 
 | Command | Purpose |
@@ -96,6 +126,8 @@ See a [sample report](docs/sample-report.html) generated from the demo fixtures.
 | `echobox search <term>` | Search transcripts and enrichments |
 | `echobox actions` | Show action items across enriched calls |
 | `echobox summary` | Show a weekly cross-call summary |
+| `echobox enroll-voice <slug> <wav> <name>` | Enroll a reference voice for speaker identification |
+| `echobox voices [list\|delete <slug>]` | Manage enrolled voices (defaults to list) |
 | `echobox enrich <file>` | Run LLM enrichment on a transcript |
 | `echobox publish <file>` | Generate HTML report from enrichment |
 | `echobox reprocess <name>` | Re-run enrichment and publishing for a call |
@@ -107,7 +139,7 @@ See a [sample report](docs/sample-report.html) generated from the demo fixtures.
 | `echobox fit` | Benchmark your hardware and recommend models |
 | `echobox demo` | Run the pipeline walkthrough on sample data |
 | `echobox test` | Run smoke tests |
-| `echobox clean [--older N] [--prune]` | Show disk usage and optionally delete old data |
+| `echobox clean [--older N] [--prune] [--audio]` | Show disk usage and optionally delete old data (include `.wav` with `--audio`) |
 | `echobox version` | Print version |
 
 ## Configuration
