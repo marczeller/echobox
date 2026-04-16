@@ -159,22 +159,18 @@ class EchoboxMenuBar(rumps.App):
             except Exception as exc:
                 self.watcher.logger(f"Error during shutdown cleanup: {exc}")
 
-    # --- Polling in background thread to avoid blocking AppKit ---
-
     _report_refresh_counter = 0
     _housekeeping_counter = 0
 
     @rumps.timer(3)
     def _tick(self, _sender) -> None:
-        # _tick fires on the main AppKit thread — safe for UI updates.
-        # Check if the background poll changed state and update UI accordingly.
+        # Runs on the main AppKit thread — safe for UI mutation.
         self._update_ui()
         if self._recording_just_ended:
             self._recording_just_ended = False
             self._refresh_recents()
             self._refresh_reports()
             self._refresh_disk_status()
-        # Refresh slow-cadence items every ~30s.
         self._report_refresh_counter += 1
         if self._report_refresh_counter >= 10:
             self._report_refresh_counter = 0
@@ -182,12 +178,10 @@ class EchoboxMenuBar(rumps.App):
             self._refresh_disk_status()
             self._refresh_routing_status()
             self._refresh_voices()
-        # Run the housekeeping sweep on its own longer cadence.
         self._housekeeping_counter += 1
         if self._housekeeping_counter >= self._housekeeping_tick_target:
             self._housekeeping_counter = 0
             self._kick_housekeeping()
-        # Kick off next poll in background if not already running
         if self._poll_lock.locked():
             return
         was_active = self.watcher.recorder.active
@@ -258,8 +252,6 @@ class EchoboxMenuBar(rumps.App):
             if was_active and not self.watcher.recorder.active:
                 self._recording_just_ended = True
 
-    # --- UI updates ---
-
     def _update_ui(self) -> None:
         if self.watcher.paused:
             self.title = self.ICON_PAUSED
@@ -323,15 +315,11 @@ class EchoboxMenuBar(rumps.App):
             self.watcher.logger(f"Error skipping: {exc}")
         self._update_ui()
 
-    # --- Folder actions ---
-
     def _open_transcript_dir(self, _sender) -> None:
         subprocess.Popen(["open", str(self.transcript_dir)])
 
     def _open_report_dir(self, _sender) -> None:
         subprocess.Popen(["open", str(self.report_dir)])
-
-    # --- Recent items ---
 
     def _populate_recents(self) -> None:
         self._refresh_recents(clear=False)
@@ -389,8 +377,6 @@ class EchoboxMenuBar(rumps.App):
         def _open(_sender):
             subprocess.Popen(["open", str(path)])
         return _open
-
-    # --- Disk status ---
 
     def _refresh_disk_status(self) -> None:
         target = self.audio_dir if self.audio_dir.exists() else self.transcript_dir
@@ -459,8 +445,6 @@ class EchoboxMenuBar(rumps.App):
             message=f"Pruned {len(deleted)} audio file(s).",
         )
 
-    # --- Routing status (BlackHole health check) ---
-
     def _refresh_routing_status(self) -> None:
         ok, reason = audio_routing_ok()
         if ok:
@@ -473,8 +457,6 @@ class EchoboxMenuBar(rumps.App):
 
     def _open_audio_midi_setup(self, _sender) -> None:
         subprocess.Popen(["open", "-a", "Audio MIDI Setup"])
-
-    # --- Voices submenu ---
 
     def _refresh_voices(self, clear: bool = True) -> None:
         if clear:
@@ -526,7 +508,6 @@ class EchoboxMenuBar(rumps.App):
         return _delete
 
     def _enroll_voice(self, _sender) -> None:
-        # File picker
         try:
             picker = subprocess.run(
                 [
@@ -593,8 +574,6 @@ class EchoboxMenuBar(rumps.App):
             return
         self._refresh_voices()
         rumps.alert(title="Echobox", message=f"Enrolled {display_name} ({slug}).")
-
-    # --- Quit ---
 
     def _quit(self, _sender) -> None:
         self._cleanup_recording()
