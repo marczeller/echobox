@@ -20,41 +20,8 @@ ECHOBOX_PYTHON="${ECHOBOX_PYTHON:-python3}"
 
 CONFIG="$ECHOBOX_DIR/config/echobox.yaml"
 
-read_config() {
-    local key="$1" default="$2"
-    local val
-    val=$(
-        "$ECHOBOX_PYTHON" - "$CONFIG" "$key" "$default" <<'PY' 2>/dev/null
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(sys.argv[1]).parent.parent))
-from pipeline.read_config import read_value
-
-print(read_value(Path(sys.argv[1]), sys.argv[2], sys.argv[3]), end="")
-PY
-    )
-    echo "${val:-$default}"
-}
-
-resolve_paths() {
-    local paths_output key value
-    paths_output=$("$ECHOBOX_PYTHON" "$ECHOBOX_DIR/pipeline/read_config.py" paths "$CONFIG" 2>/dev/null || true)
-    while IFS='=' read -r key value; do
-        [ -n "$key" ] || continue
-        case "$key" in
-            DATA_DIR|TRANSCRIPT_DIR|REPORT_DIR|STATE_DIR)
-                printf -v "$key" '%s' "$value" ;;
-        esac
-    done <<EOF
-$paths_output
-EOF
-    DATA_DIR="${DATA_DIR:-$HOME/echobox-data}"
-    TRANSCRIPT_DIR="${TRANSCRIPT_DIR:-$DATA_DIR/transcripts}"
-    REPORT_DIR="${REPORT_DIR:-$DATA_DIR/reports}"
-    STATE_DIR="${STATE_DIR:-$(dirname "$REPORT_DIR")}"
-    mkdir -p "$REPORT_DIR" "$STATE_DIR"
-}
+# shellcheck disable=SC1091
+. "$ECHOBOX_DIR/pipeline/_shell_common.sh"
 
 resolve_paths
 
