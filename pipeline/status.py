@@ -16,14 +16,6 @@ def has_command(name: str) -> bool:
     return shutil.which(name) is not None
 
 
-def command_output(command: list[str]) -> str:
-    try:
-        result = subprocess.run(command, capture_output=True, text=True, timeout=5, check=False)
-    except Exception:
-        return ""
-    return (result.stdout or result.stderr).strip()
-
-
 def module_importable(name: str) -> bool:
     try:
         importlib.import_module(name)

@@ -234,16 +234,6 @@ def identify_speakers(
     return mapping
 
 
-def relabel_transcript(transcript_text: str, mapping: dict[str, str]) -> str:
-    """Replace SPEAKER_XX tokens in a transcript with mapped real names."""
-    if not mapping:
-        return transcript_text
-    out = transcript_text
-    for label in sorted(mapping, key=len, reverse=True):
-        out = out.replace(f"{label}:", f"{mapping[label]}:")
-    return out
-
-
 def main() -> int:
     import argparse
     parser = argparse.ArgumentParser(description="Echobox voice enrollment")

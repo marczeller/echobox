@@ -32,7 +32,6 @@ except ImportError:  # pragma: no cover - AppKit always present on macOS
 
 
 MAX_LINES = 40
-MAX_CHARS_PER_LINE = 140
 
 
 class CaptionPanel:
