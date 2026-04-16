@@ -340,7 +340,6 @@ echobox/
     caption_panel.py               Swift helper live caption panel (NSPanel)
     swift_helper.py                Swift capture helper backend (opt-in)
     LICENSE                        Upstream MIT attribution for vendored code
-    *.diff                         Human-readable patch descriptions
 
   swift/echobox-capture/           Opt-in Swift capture binary (WhisperKit / process-tap)
   system-audio-tap/                Core Audio process-tap helper (macOS 14.2+)
