@@ -729,13 +729,12 @@ def cmd_transcribe(ctx: AppContext, args: argparse.Namespace) -> int:
         print(f"Error: WAV file not found: {wav_input}", file=sys.stderr)
         return 1
 
-    # Check if resampling is needed
     probe = subprocess.run(
         ["ffmpeg", "-i", str(wav_input)],
         capture_output=True,
         text=True,
     )
-    probe_output = probe.stderr  # ffmpeg prints info to stderr
+    probe_output = probe.stderr  # ffmpeg prints stream info to stderr
     needs_resample = True
     if "16000 Hz" in probe_output and "mono" in probe_output:
         needs_resample = False
@@ -766,11 +765,10 @@ def cmd_transcribe(ctx: AppContext, args: argparse.Namespace) -> int:
     if isinstance(result, dict):
         result["_wav_path"] = str(work_path)
 
-    # Use file modification time as a proxy for recording start
+    # File mtime is the closest proxy we have to recording start for imports.
     from datetime import datetime
     started_at = datetime.fromtimestamp(wav_input.stat().st_mtime).astimezone()
 
-    # Estimate duration from WAV file
     try:
         with wave.open(str(work_path), "rb") as wf:
             frames = wf.getnframes()
@@ -786,7 +784,6 @@ def cmd_transcribe(ctx: AppContext, args: argparse.Namespace) -> int:
     transcript_path.parent.mkdir(parents=True, exist_ok=True)
     transcript_path.write_text(transcript_body, encoding="utf-8")
 
-    # Clean up resampled file
     if needs_resample and work_path != wav_input and work_path.exists():
         work_path.unlink()
 

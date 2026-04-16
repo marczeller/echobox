@@ -165,8 +165,6 @@ def write_config_value(config_path: Path, key: str, value: str) -> bool:
 
 def get_hardware_info() -> dict:
     info = {"chip": "Unknown", "memory_gb": 0}
-    import platform
-
     if platform.system() == "Darwin":
         try:
             result = subprocess.run(
@@ -214,8 +212,6 @@ def get_hardware_info() -> dict:
             processor = platform.processor() or platform.machine()
             if processor:
                 info["chip"] = processor
-    else:
-        pass
 
     return info
 
@@ -360,8 +356,6 @@ def detect_hf_cached_models() -> list:
     return sorted(found, key=_model_rank, reverse=True)
 
 
-
-
 def detect_local_models() -> list:
     """Scan HuggingFace cache for downloaded MLX models."""
     return detect_hf_cached_models()
@@ -396,7 +390,7 @@ def _build_models_endpoints(config_path: Path) -> list:
 
 def detect_running_models(config_path: Path) -> list:
     found = []
-    for endpoint in _build_models_endpoints(config_path, ):
+    for endpoint in _build_models_endpoints(config_path):
         try:
             req = urllib.request.Request(endpoint, headers={"Accept": "application/json"})
             with urllib.request.urlopen(req, timeout=3) as resp:

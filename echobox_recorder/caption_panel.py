@@ -49,8 +49,6 @@ class CaptionPanel:
         self._visible = False
         self._create_panel()
 
-    # ------------------------------------------------------------------ setup
-
     def _create_panel(self) -> None:
         style = (
             AppKit.NSWindowStyleMaskTitled
@@ -110,8 +108,6 @@ class CaptionPanel:
         self._text_view = text_view
         self._redraw()
 
-    # ---------------------------------------------------------------- display
-
     def show(self) -> None:
         self._call_on_main(self._show_impl)
 
@@ -141,8 +137,6 @@ class CaptionPanel:
             self._current_partial = ""
             self._status_line = "Recording…"
         self._call_on_main(self._redraw)
-
-    # -------------------------------------------------------- event ingestion
 
     def handle_event(self, event: dict[str, Any]) -> None:
         """Apply a JSONL event from the Swift helper to the panel state."""
@@ -174,8 +168,6 @@ class CaptionPanel:
         elif kind == "stopped":
             self.set_status("Recording ended")
 
-    # ---------------------------------------------------------------- drawing
-
     def _redraw(self) -> None:
         if self._text_view is None:
             return
@@ -186,7 +178,6 @@ class CaptionPanel:
 
         attributed = AppKit.NSMutableAttributedString.alloc().init()
 
-        # Status pill.
         status_attrs = {
             AppKit.NSForegroundColorAttributeName: AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(
                 0.6, 0.9, 0.7, 1.0
@@ -201,7 +192,6 @@ class CaptionPanel:
             )
         )
 
-        # Final text.
         final_attrs = {
             AppKit.NSForegroundColorAttributeName: AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(
                 0.93, 0.95, 0.97, 1.0
@@ -215,7 +205,6 @@ class CaptionPanel:
                 )
             )
 
-        # Trailing partial.
         if partial:
             partial_attrs = {
                 AppKit.NSForegroundColorAttributeName: AppKit.NSColor.colorWithCalibratedRed_green_blue_alpha_(
@@ -233,8 +222,6 @@ class CaptionPanel:
         length = attributed.length()
         if length > 0:
             self._text_view.scrollRangeToVisible_((length - 1, 1))
-
-    # ------------------------------------------------------- main-thread util
 
     @staticmethod
     def _call_on_main(fn: Any) -> None:

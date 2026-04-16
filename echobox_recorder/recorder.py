@@ -204,7 +204,6 @@ def ensure_output_routes_to_blackhole(logger: Callable[[str], None] | None = Non
     if "multi-output" in current:
         return  # already routing through Multi-Output Device
 
-    # Check if a Multi-Output Device exists
     try:
         all_outputs = subprocess.run(
             [sas, "-a", "-t", "output"],
@@ -556,7 +555,6 @@ class EchoboxRecorder:
         wav_path = self.audio_dir / f"{transcript_id}.wav"
         transcript_path = self.output_dir / f"{transcript_id}.txt"
         device = self.resolve_input_device()
-        # If recording via BlackHole, ensure system output routes through it
         if device is not None:
             sd = _import_sounddevice()
             try:
@@ -832,7 +830,6 @@ class EchoboxRecorder:
         """Filter common Whisper hallucination patterns from segments."""
         filtered: list[dict[str, Any]] = []
 
-        # --- Pass 1: Consecutive repetition filter ---
         # If the same text appears 3+ times in a row, keep only the first.
         deduped: list[dict[str, Any]] = []
         run_text: str | None = None
@@ -848,7 +845,6 @@ class EchoboxRecorder:
                 run_count = 1
                 deduped.append(seg)
 
-        # --- Pass 2: Internal repetition filter ---
         # Drop segments where >80% of tokens are the same word.
         for seg in deduped:
             text = str(seg.get("text", "")).strip()
@@ -860,7 +856,6 @@ class EchoboxRecorder:
                     continue
             filtered.append(seg)
 
-        # --- Pass 3: Sliding window dedup ---
         # Drop duplicate text within a 5-segment window.
         final: list[dict[str, Any]] = []
         window: list[str] = []
