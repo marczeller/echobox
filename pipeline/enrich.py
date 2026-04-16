@@ -19,6 +19,16 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent))
+from echobox_types import (  # noqa: E402
+    ActionItem,
+    Attendee,
+    Classification,
+    Config,
+    EnrichmentSidecar,
+    TranscriptMeta,
+)
+
 DEFAULT_CONFIG = Path(__file__).parent.parent / "config" / "echobox.yaml"
 SSH_OPTS = ["-o", "ConnectTimeout=5"]
 MAX_PROMPT_INPUT_CHARS = 100_000
@@ -93,7 +103,7 @@ class StepLogger:
             print(message, file=sys.stderr)
 
 
-def load_config(config_path: Path) -> dict:
+def load_config(config_path: Path) -> Config:
     """Load YAML config into dotted key-value pairs using PyYAML."""
     try:
         import yaml
@@ -138,12 +148,12 @@ def load_config(config_path: Path) -> dict:
     return config
 
 
-def get_config(config: dict, key: str, default: str = "") -> str:
+def get_config(config: Config, key: str, default: str = "") -> str:
     env_key = f"ECHOBOX_{key.upper().replace('.', '_')}"
     return os.environ.get(env_key, config.get(key, default))
 
 
-def get_config_list(config: dict, key: str) -> list[str]:
+def get_config_list(config: Config, key: str) -> list[str]:
     values: list[tuple[int, str]] = []
     prefix = f"{key}."
     for config_key, value in config.items():
@@ -162,7 +172,7 @@ def _substitute_placeholders(value: str, substitutions: dict[str, str]) -> str:
     return rendered
 
 
-def _build_command(config: dict, key_prefix: str, substitutions: dict[str, str]) -> str | list[str]:
+def _build_command(config: Config, key_prefix: str, substitutions: dict[str, str]) -> str | list[str]:
     command_args = get_config_list(config, f"{key_prefix}.command_args")
     if command_args:
         return [_substitute_placeholders(arg, substitutions) for arg in command_args]
@@ -229,8 +239,8 @@ def run_command(
     return local_run(cmd, timeout, failure_label=failure_label)
 
 
-def parse_transcript_metadata(transcript_path: Path, transcript_text: str) -> dict:
-    meta = {"date": None, "time": None, "duration": None}
+def parse_transcript_metadata(transcript_path: Path, transcript_text: str) -> TranscriptMeta:
+    meta: TranscriptMeta = {"date": None, "time": None, "duration": None}
 
     filename_match = re.match(r"(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})", transcript_path.name)
     if filename_match:
@@ -360,7 +370,7 @@ def parse_calendar_output(raw: str) -> list[dict]:
     return []
 
 
-def get_calendar_context(config: dict, workstation: str, transcript_date: str) -> list:
+def get_calendar_context(config: Config, workstation: str, transcript_date: str) -> list[dict]:
     cmd = _build_command(
         config,
         "context_sources.calendar",
@@ -375,7 +385,7 @@ def get_calendar_context(config: dict, workstation: str, transcript_date: str) -
     return parse_calendar_output(raw)
 
 
-def timestamp_match(events: list, transcript_time: str) -> dict:
+def timestamp_match(events: list[dict], transcript_time: str) -> dict:
     if not events or not transcript_time:
         return {}
 
@@ -401,7 +411,7 @@ def timestamp_match(events: list, transcript_time: str) -> dict:
     return {}
 
 
-def load_team_config(config: dict) -> tuple:
+def load_team_config(config: Config) -> tuple[dict[str, str], set[str], dict[str, str], list[str]]:
     known_emails = {}
     internal_domains = set()
     team_roles = {}
@@ -427,8 +437,8 @@ def load_team_config(config: dict) -> tuple:
     return known_emails, internal_domains, team_roles, sorted(team_members)
 
 
-def map_attendees(event: dict, known_emails: dict) -> list:
-    attendee_list = []
+def map_attendees(event: dict, known_emails: dict[str, str]) -> list[Attendee]:
+    attendee_list: list[Attendee] = []
     for att in event.get("attendees", []):
         email = att.get("email", "")
         name = known_emails.get(email, att.get("displayName", email))
@@ -436,7 +446,7 @@ def map_attendees(event: dict, known_emails: dict) -> list:
     return attendee_list
 
 
-def load_meeting_types(config: dict) -> dict:
+def load_meeting_types(config: Config) -> dict[str, dict]:
     meeting_types = {}
     type_keys = set()
     for key in config:
@@ -457,9 +467,9 @@ def load_meeting_types(config: dict) -> dict:
 
 
 def classify_call_type(
-    event: dict, attendee_list: list,
-    meeting_types: dict, internal_domains: set
-) -> dict:
+    event: dict, attendee_list: list[Attendee],
+    meeting_types: dict[str, dict], internal_domains: set[str]
+) -> Classification:
     title = event.get("summary", "")
 
     for type_name, type_config in meeting_types.items():
@@ -494,7 +504,7 @@ def classify_call_type(
     return {"meeting_type": "general", "matched_pattern": None}
 
 
-def _get_allowed_sources(config: dict, classification: dict) -> set:
+def _get_allowed_sources(config: Config, classification: Classification) -> set[str]:
     """Determine which context sources to query based on meeting type config."""
     meeting_type = classification.get("meeting_type", "general")
     context_str = get_config(config, f"meeting_types.{meeting_type}.context", "")
@@ -644,7 +654,7 @@ def _fetch_web(config, workstation, attendee_list, allowed_sources):
     return sections
 
 
-def _extract_key_terms(transcript_text: str, max_terms: int = 5) -> list:
+def _extract_key_terms(transcript_text: str, max_terms: int = 5) -> list[str]:
     """Extract key terms from transcript for context search."""
     words = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b', transcript_text)
     freq = {}
@@ -686,7 +696,7 @@ def _sanitize_prompt_field(value: str, max_len: int) -> str:
     return cleaned
 
 
-def _fetch_calendar_context(event: dict) -> list:
+def _fetch_calendar_context(event: dict) -> list[str]:
     """Inject calendar event details as context for the LLM.
 
     Calendar fields are treated as untrusted external input — see
@@ -724,7 +734,7 @@ def _fetch_calendar_context(event: dict) -> list:
     ]
 
 
-def _fetch_prior_meetings(enrichment_dir: str, attendee_list: list, max_results: int = 2) -> list:
+def _fetch_prior_meetings(enrichment_dir: str, attendee_list: list[Attendee], max_results: int = 2) -> list[str]:
     """Search previous enrichments for context about the same attendees."""
     if not enrichment_dir or not attendee_list:
         return []
@@ -755,8 +765,8 @@ def _fetch_prior_meetings(enrichment_dir: str, attendee_list: list, max_results:
 
 
 def fetch_context_by_type(
-    config: dict, workstation: str,
-    classification: dict, event: dict, attendee_list: list,
+    config: Config, workstation: str,
+    classification: Classification, event: dict, attendee_list: list[Attendee],
     transcript_text: str = "",
 ) -> str:
     allowed = _get_allowed_sources(config, classification)
@@ -818,8 +828,8 @@ def fetch_context_by_type(
 
 
 def build_attendees_block(
-    attendee_list: list,
-    team_roles: dict,
+    attendee_list: list[Attendee],
+    team_roles: dict[str, str],
     fallback_names: list[str] | None = None,
 ) -> str:
     lines = []
@@ -854,7 +864,7 @@ def build_attendees_block(
     return "<known_attendees>\n" + "\n".join(lines) + "\n</known_attendees>"
 
 
-def load_prompt_template(config: dict) -> str:
+def load_prompt_template(config: Config) -> str:
     template_path = get_config(config, "prompt.template", "").strip()
     if not template_path:
         return DEFAULT_PROMPT_TEMPLATE
@@ -912,7 +922,7 @@ def render_prompt_template(template: str, values: dict[str, str]) -> str:
 def build_prompt(
     transcript_text: str,
     attendees_block: str,
-    classification: dict,
+    classification: Classification,
     curated_context: str,
     template_text: str | None = None,
     language_instruction: str = "",
@@ -955,9 +965,14 @@ def clamp_prompt_inputs(transcript_text: str, curated_context: str) -> tuple[str
     return trimmed_transcript, trimmed_context
 
 
-def extract_structured_data(enrichment_md: str, meta: dict, classification: dict, attendee_list: list) -> dict:
+def extract_structured_data(
+    enrichment_md: str,
+    meta: TranscriptMeta,
+    classification: Classification,
+    attendee_list: list[Attendee],
+) -> EnrichmentSidecar:
     """Parse enrichment markdown into structured JSON for downstream integrations."""
-    data = {
+    data: EnrichmentSidecar = {
         "date": meta.get("date"),
         "time": meta.get("time"),
         "duration": meta.get("duration"),
@@ -1030,7 +1045,7 @@ def extract_structured_data(enrichment_md: str, meta: dict, classification: dict
     return data
 
 
-def call_mlx(prompt: str, config: dict, logger: StepLogger | None = None) -> str:
+def call_mlx(prompt: str, config: Config, logger: StepLogger | None = None) -> str:
     url = get_config(config, "mlx_url", "http://localhost:8090/v1/chat/completions")
     model = get_config(config, "mlx_model", "mlx-community/Qwen3-Next-80B-A3B-Instruct-6bit")
     timeout = int(get_config(config, "mlx_timeout_seconds", "600") or "600")

@@ -8,6 +8,9 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent))
+from echobox_types import EnrichmentSidecar  # noqa: E402
+
 
 def report_slug_for_name(name: str) -> str:
     slug = re.sub(r"[^a-z0-9-]", "-", name.lower())
@@ -71,7 +74,7 @@ def main() -> int:
             status = "transcript only"
 
         summary = ""
-        sidecar_data: dict[str, object] = {}
+        sidecar_data: EnrichmentSidecar = {}
         if sidecar.exists():
             sidecar_data = json.loads(sidecar.read_text(encoding="utf-8"))
             summary = str(sidecar_data.get("summary") or "")[:60]

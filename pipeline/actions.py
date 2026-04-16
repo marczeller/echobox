@@ -10,11 +10,14 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent))
+from echobox_types import ActionItem  # noqa: E402
+
 ACTION_RE = re.compile(r"^\s*[-*]\s+\*\*\[(?P<owner>[^\]]+)\]\*\*\s+(?P<task>.+?)\s*(?:\*\(by (?P<deadline>.+?)\)\*)?\s*$")
 
 
-def parse_markdown_actions(markdown_path: Path) -> list[dict[str, str]]:
-    items: list[dict[str, str]] = []
+def parse_markdown_actions(markdown_path: Path) -> list[ActionItem]:
+    items: list[ActionItem] = []
     in_section = False
 
     for line in markdown_path.read_text(encoding="utf-8").splitlines():
@@ -39,7 +42,7 @@ def parse_markdown_actions(markdown_path: Path) -> list[dict[str, str]]:
     return items
 
 
-def print_items(name: str, items: list[dict[str, str]]) -> int:
+def print_items(name: str, items: list[ActionItem]) -> int:
     print(f"  {name}")
     for item in items:
         owner = item.get("owner", "?")

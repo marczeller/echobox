@@ -16,6 +16,9 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent))
+from echobox_types import EnrichmentSidecar  # noqa: E402
+
 INTERNAL_DOMAINS = {"bgdlabs.com", "aavechan.com", "aave.com"}
 GENERIC_SUFFIXES = {"capital", "vc", "ventures", "xyz", "co", "io", "com", "fund", "labs"}
 
@@ -38,7 +41,7 @@ def _org_from_email(email: str) -> str | None:
     return parts[0]
 
 
-def derive_slug(sidecar: dict, fallback: str) -> str:
+def derive_slug(sidecar: EnrichmentSidecar, fallback: str) -> str:
     date = (sidecar.get("date") or "").strip()
     if not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
         m = re.search(r"(\d{4}-\d{2}-\d{2})", fallback)
