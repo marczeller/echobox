@@ -138,7 +138,7 @@ def run_python_module(main_func, argv: list[str]) -> int:
         sys.argv = original
 
 
-def run_shell_script(script: Path, *args: str, extra_env: dict[str, str] | None = None) -> int:
+def _shell_script_env(extra_env: dict[str, str] | None = None) -> dict[str, str]:
     env = os.environ.copy()
     env.setdefault(
         "PATH",
@@ -146,6 +146,11 @@ def run_shell_script(script: Path, *args: str, extra_env: dict[str, str] | None 
     )
     if extra_env:
         env.update(extra_env)
+    return env
+
+
+def run_shell_script(script: Path, *args: str, extra_env: dict[str, str] | None = None) -> int:
+    env = _shell_script_env(extra_env)
     return subprocess.run(["bash", str(script), *args], check=False, env=env).returncode
 
 
@@ -154,13 +159,7 @@ def run_shell_script_capture(
     *args: str,
     extra_env: dict[str, str] | None = None,
 ) -> tuple[int, str, str]:
-    env = os.environ.copy()
-    env.setdefault(
-        "PATH",
-        f"/opt/homebrew/bin:/usr/local/bin:{Path.home()}/bin:{Path.home()}/.local/bin:{env.get('PATH', '')}",
-    )
-    if extra_env:
-        env.update(extra_env)
+    env = _shell_script_env(extra_env)
     result = subprocess.run(
         ["bash", str(script), *args],
         check=False,
