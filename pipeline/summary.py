@@ -11,6 +11,9 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent))
+from echobox_types import EnrichmentSidecar  # noqa: E402
+
 
 def parse_args(argv: list[str]) -> tuple[int, str]:
     days = 7
@@ -62,7 +65,7 @@ def parse_markdown_section(lines: list[str], heading_pattern: str) -> list[str]:
 
 
 def parse_json_sidecar(sidecar_path: Path) -> tuple[str, list[str], list[str]]:
-    data = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    data: EnrichmentSidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
     summary = (data.get("summary") or "")[:80]
     decisions = [f"    - {item}" for item in data.get("decisions", []) if item]
     actions: list[str] = []

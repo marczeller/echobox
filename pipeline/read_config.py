@@ -14,10 +14,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from enrich import load_config
+from echobox_types import Config  # noqa: E402
+from enrich import load_config  # noqa: E402
 
 
-def safe_load_config(config_path: Path) -> dict[str, str]:
+def safe_load_config(config_path: Path) -> Config:
     try:
         return load_config(config_path)
     except Exception:
