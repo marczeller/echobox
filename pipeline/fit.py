@@ -163,8 +163,8 @@ def write_config_value(config_path: Path, key: str, value: str) -> bool:
     return True
 
 
-def get_hardware_info() -> dict:
-    info = {"chip": "Unknown", "memory_gb": 0}
+def get_hardware_info() -> dict[str, str | float]:
+    info: dict[str, str | float] = {"chip": "Unknown", "memory_gb": 0}
     import platform
 
     if platform.system() == "Darwin":
@@ -271,7 +271,7 @@ def _is_chat_model(name: str) -> bool:
     return True
 
 
-def _load_config(config_path: Path) -> dict:
+def _load_config(config_path: Path) -> dict[str, str]:
     try:
         from pipeline.enrich import ConfigError
         from pipeline.enrich import load_config
@@ -300,7 +300,7 @@ def _normalize_model_name(name: str) -> str:
     return name.split("/")[-1].strip().lower()
 
 
-def _model_rank(model: dict) -> tuple:
+def _model_rank(model: dict) -> tuple[float, float, str]:
     return (model.get("param_b", 0.0), model.get("size_gb", 0.0), model.get("name", ""))
 
 

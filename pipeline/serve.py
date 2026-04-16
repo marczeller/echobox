@@ -95,8 +95,8 @@ class ReportHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
 
-    def _parse_cookies(self) -> dict:
-        cookies = {}
+    def _parse_cookies(self) -> dict[str, str]:
+        cookies: dict[str, str] = {}
         header = self.headers.get("Cookie", "")
         for part in header.split(";"):
             part = part.strip()
