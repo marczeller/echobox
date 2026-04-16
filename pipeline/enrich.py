@@ -104,7 +104,12 @@ class StepLogger:
 
 
 def load_config(config_path: Path) -> Config:
-    """Load YAML config into dotted key-value pairs using PyYAML."""
+    """Load YAML config into dotted key-value pairs using PyYAML.
+
+    Every leaf value is coerced to ``str`` (bool → "true"/"false", None → "",
+    list → comma-joined string). Callers should treat the returned mapping as
+    string-keyed and string-valued.
+    """
     try:
         import yaml
     except ModuleNotFoundError as exc:
@@ -932,7 +937,7 @@ def build_prompt(
         {
             "transcript": transcript_text,
             "known_attendees": attendees_block,
-            "meeting_type": classification["meeting_type"],
+            "meeting_type": classification["meeting_type"] or "",
             "curated_context": curated_context,
             "language_instruction": language_instruction,
         },
