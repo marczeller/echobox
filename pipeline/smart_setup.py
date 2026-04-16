@@ -66,7 +66,7 @@ def run_command(argv: list[str], timeout: int = 10) -> tuple[int, str, str]:
     try:
         result = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, check=False)
         return result.returncode, result.stdout.strip(), result.stderr.strip()
-    except Exception as exc:
+    except (OSError, subprocess.SubprocessError) as exc:
         return 1, "", str(exc)
 
 
@@ -78,7 +78,7 @@ def readable_sqlite(path: Path) -> bool:
         finally:
             connection.close()
         return True
-    except Exception:
+    except (OSError, sqlite3.Error):
         return False
 
 
@@ -86,7 +86,7 @@ def module_exists(name: str) -> bool:
     try:
         importlib.import_module(name)
         return True
-    except Exception:
+    except (ImportError, ModuleNotFoundError):
         return False
 
 

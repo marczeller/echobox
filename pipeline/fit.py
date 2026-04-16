@@ -17,6 +17,7 @@ import subprocess
 import sys
 import shutil
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -175,7 +176,7 @@ def get_hardware_info() -> dict:
             )
             if result.returncode == 0:
                 info["chip"] = result.stdout.strip()
-        except Exception:
+        except (OSError, subprocess.SubprocessError):
             pass
         try:
             result = subprocess.run(
@@ -184,7 +185,7 @@ def get_hardware_info() -> dict:
             )
             if result.returncode == 0:
                 info["memory_gb"] = int(result.stdout.strip()) / (1024 ** 3)
-        except Exception:
+        except (OSError, subprocess.SubprocessError, ValueError):
             pass
         if info["chip"] == "Unknown" or info["memory_gb"] <= 0:
             try:
@@ -201,14 +202,14 @@ def get_hardware_info() -> dict:
                             match = re.search(r"(\d+(?:\.\d+)?)\s*GB", stripped)
                             if match:
                                 info["memory_gb"] = float(match.group(1))
-            except Exception:
+            except (OSError, subprocess.SubprocessError):
                 pass
         if info["memory_gb"] <= 0:
             try:
                 page_size = os.sysconf("SC_PAGE_SIZE")
                 phys_pages = os.sysconf("SC_PHYS_PAGES")
                 info["memory_gb"] = (page_size * phys_pages) / (1024 ** 3)
-            except Exception:
+            except (OSError, ValueError):
                 pass
         if info["chip"] == "Unknown":
             processor = platform.processor() or platform.machine()
@@ -241,7 +242,7 @@ def install_llmfit() -> bool:
     try:
         result = subprocess.run(["brew", "install", "llmfit"], timeout=120)
         return result.returncode == 0
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return False
 
 
@@ -255,7 +256,7 @@ def run_llmfit_recommend(limit: int = 20) -> list:
             return []
         data = json.loads(result.stdout)
         return data.get("models", [])
-    except Exception:
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
         return []
 
 
@@ -414,7 +415,7 @@ def detect_running_models(config_path: Path) -> list:
                     })
             if found:
                 return sorted(found, key=_model_rank, reverse=True)
-        except Exception:
+        except (OSError, urllib.error.URLError, json.JSONDecodeError, ValueError, KeyError):
             continue
     return found
 
@@ -423,7 +424,7 @@ def get_disk_free_gb() -> float:
     try:
         st = os.statvfs(os.path.expanduser("~"))
         return (st.f_bavail * st.f_frsize) / (1024 ** 3)
-    except Exception:
+    except OSError:
         return 0.0
 
 
@@ -613,7 +614,7 @@ def generate_sample_wav() -> str | None:
         )
         if result.returncode == 0:
             return sample_path
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         pass
     return None
 

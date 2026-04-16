@@ -19,7 +19,7 @@ def has_command(name: str) -> bool:
 def command_output(command: list[str]) -> str:
     try:
         result = subprocess.run(command, capture_output=True, text=True, timeout=5, check=False)
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return ""
     return (result.stdout or result.stderr).strip()
 
@@ -28,7 +28,7 @@ def module_importable(name: str) -> bool:
     try:
         importlib.import_module(name)
         return True
-    except Exception:
+    except (ImportError, ModuleNotFoundError):
         return False
 
 
@@ -42,7 +42,7 @@ def can_reach_models(mlx_url: str) -> bool:
             timeout=5,
             check=False,
         )
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return False
     return result.returncode == 0
 
@@ -56,7 +56,7 @@ def can_reach_ssh(target: str) -> bool:
             timeout=5,
             check=False,
         )
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return False
     return "ok" in result.stdout
 
@@ -72,7 +72,7 @@ def is_writable(path: Path) -> bool:
         probe.write_text("", encoding="utf-8")
         probe.unlink()
         return True
-    except Exception:
+    except OSError:
         return False
 
 

@@ -15,7 +15,7 @@ def scan(directory: Path, label: str, pattern: str, suffixes: tuple[str, ...]) -
             continue
         try:
             lines = path.read_text(encoding="utf-8").splitlines()
-        except Exception:
+        except (OSError, UnicodeDecodeError):
             continue
         pattern_lower = pattern.lower()
         matches = [(index, line) for index, line in enumerate(lines, start=1) if pattern_lower in line.lower()]
