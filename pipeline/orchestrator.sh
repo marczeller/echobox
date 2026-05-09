@@ -97,14 +97,69 @@ if [ ! -f "$TRANSCRIPT_FILE" ]; then
 fi
 
 WORKSTATION="${ECHOBOX_WORKSTATION:-$(read_config workstation_ssh '')}"
-MEETING_NOTES_SSH="$(read_config 'meeting_notes.ssh_host' '')"
-MEETING_NOTES_DIR="$(read_config 'meeting_notes.base_dir' '~/meeting-notes')"
+MEETING_NOTES_SSH="${ECHOBOX_MEETING_NOTES_SSH-$(read_config 'meeting_notes.ssh_host' '')}"
+MEETING_NOTES_DIR="${ECHOBOX_MEETING_NOTES_DIR-$(read_config 'meeting_notes.base_dir' '~/meeting-notes')}"
 ENRICHED_ENRICHMENT="$ENRICHMENT_DIR/${TRANSCRIPT_ID}-enriched.md"
 RAW_ENRICHMENT="$ENRICHMENT_DIR/${TRANSCRIPT_ID}-raw.md"
 ENRICHMENT="$ENRICHED_ENRICHMENT"
 
 MLX_URL="${ECHOBOX_MLX_URL:-$(read_config mlx_url 'http://localhost:8090/v1/chat/completions')}"
 MLX_MODELS_URL="${MLX_URL%/chat/completions}/models"
+MLX_LAUNCHD_LABEL="${ECHOBOX_MLX_LAUNCHD_LABEL:-$(read_config mlx_launchd_label 'com.echobox.mlx-server')}"
+MLX_STARTUP_TIMEOUT_SECONDS="${ECHOBOX_MLX_STARTUP_TIMEOUT_SECONDS:-$(read_config mlx_startup_timeout_seconds '90')}"
+MLX_LOCK_DIR="$STATE_DIR/mlx-enrichment.lock"
+MLX_LOCK_HELD=false
+
+acquire_mlx_lock() {
+    local waited=0
+    while ! mkdir "$MLX_LOCK_DIR" 2>/dev/null; do
+        if [ $waited -eq 0 ]; then
+            echo "      Waiting for local MLX enrichment slot..."
+        fi
+        sleep 5
+        waited=$((waited + 5))
+        if [ $waited -ge 7200 ]; then
+            echo "      Timed out waiting for local MLX enrichment slot"
+            return 1
+        fi
+    done
+    MLX_LOCK_HELD=true
+    {
+        echo "pid=$$"
+        date -u '+created_at=%Y-%m-%dT%H:%M:%SZ'
+        echo "transcript_id=$TRANSCRIPT_ID"
+    } > "$MLX_LOCK_DIR/owner"
+    return 0
+}
+
+release_mlx_lock() {
+    if [ "$MLX_LOCK_HELD" = true ]; then
+        rm -f "$MLX_LOCK_DIR/owner"
+        rmdir "$MLX_LOCK_DIR" 2>/dev/null || true
+        MLX_LOCK_HELD=false
+    fi
+}
+
+trap release_mlx_lock EXIT INT TERM
+
+ensure_mlx_running() {
+    # On-demand load: kickstart the launchd job and wait for /models to respond.
+    # Saves ~20GB resident memory + battery between calls.
+    if curl -sf "$MLX_MODELS_URL" >/dev/null 2>&1; then return 0; fi
+    echo "      Starting mlx-server (cold start, ~30-60s)..."
+    launchctl kickstart "gui/$(id -u)/$MLX_LAUNCHD_LABEL" 2>/dev/null || return 1
+    local i=0
+    while [ $i -lt "$MLX_STARTUP_TIMEOUT_SECONDS" ]; do
+        if curl -sf "$MLX_MODELS_URL" >/dev/null 2>&1; then return 0; fi
+        sleep 1
+        i=$((i + 1))
+    done
+    return 1
+}
+
+stop_mlx() {
+    launchctl kill SIGTERM "gui/$(id -u)/$MLX_LAUNCHD_LABEL" 2>/dev/null || true
+}
 
 ENRICHMENT_STATUS="enriched"
 
@@ -120,7 +175,18 @@ use_raw_transcript() {
 }
 
 echo "[1/5] LLM enrichment with project context..."
-if [ -n "$WORKSTATION" ]; then
+ENRICHED_SIDECAR="${ENRICHED_ENRICHMENT%.md}.json"
+if [ "${ECHOBOX_FORCE_ENRICH:-false}" != "true" ] \
+   && [ -f "$ENRICHED_ENRICHMENT" ] \
+   && [ -f "$ENRICHED_SIDECAR" ]; then
+    # Idempotent replay: a previous run (or a manual `./echobox enrich`)
+    # already produced the enrichment. Skip the LLM round-trip and let
+    # the rest of the pipeline (slug rename, publish, sync, notify) run
+    # against the existing files. Set ECHOBOX_FORCE_ENRICH=true to
+    # rebuild the enrichment from scratch.
+    echo "      Reusing existing enrichment: $(basename "$ENRICHED_ENRICHMENT")"
+    rm -f "$RAW_ENRICHMENT"
+elif [ -n "$WORKSTATION" ]; then
     REMOTE_TRANSCRIPT="$(basename "$TRANSCRIPT_FILE" | sed 's/[^a-zA-Z0-9._-]/_/g')"
     REMOTE_ENRICHMENT="$(basename "$ENRICHED_ENRICHMENT" | sed 's/[^a-zA-Z0-9._-]/_/g')"
     REMOTE_SIDECAR="${REMOTE_ENRICHMENT%.md}.json"
@@ -136,7 +202,7 @@ if [ -n "$WORKSTATION" ]; then
     else
         use_raw_transcript "Workstation enrichment failed — saving raw transcript as $(basename "$RAW_ENRICHMENT")"
     fi
-elif curl -sf "$MLX_MODELS_URL" >/dev/null 2>&1; then
+elif acquire_mlx_lock && ensure_mlx_running; then
     $ECHOBOX_PYTHON "$ECHOBOX_DIR/pipeline/enrich.py" "$TRANSCRIPT_FILE" -o "$ENRICHMENT" || {
         use_raw_transcript "LLM enrichment failed — saving raw transcript as $(basename "$RAW_ENRICHMENT")"
     }
@@ -144,9 +210,16 @@ elif curl -sf "$MLX_MODELS_URL" >/dev/null 2>&1; then
         rm -f "$RAW_ENRICHMENT"
     fi
     echo "      Done: $ENRICHMENT"
+    # Free model memory only after this serialized local enrichment exits.
+    # Override with ECHOBOX_KEEP_MLX=1 if running back-to-back enrichments.
+    if [ "${ECHOBOX_KEEP_MLX:-0}" != "1" ]; then
+        stop_mlx
+    fi
+    release_mlx_lock
 else
     echo "      LLM server not running at $MLX_URL"
     use_raw_transcript "Saving raw transcript as $(basename "$RAW_ENRICHMENT")"
+    release_mlx_lock
 fi
 
 if [ "$ENRICHMENT_STATUS" = "enriched" ] && [ -f "${ENRICHMENT%.md}.json" ]; then
@@ -223,7 +296,7 @@ if [ -n "$MEETING_NOTES_SSH" ] && [ "$ENRICHMENT_STATUS" = "enriched" ]; then
 
     REPORT_SLUG_SYNC=$(echo "$(basename "$ENRICHMENT" .md)" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g')
     LOCAL_REPORT="$REPORT_DIR/$REPORT_SLUG_SYNC/report.html"
-    REMOTE_REPORTS_DIR="$(read_config 'meeting_notes.reports_dir' '~/echobox-reports/reports')"
+    REMOTE_REPORTS_DIR="${ECHOBOX_MEETING_NOTES_REPORTS_DIR-$(read_config 'meeting_notes.reports_dir' '~/echobox-reports/reports')}"
     if [ -f "$LOCAL_REPORT" ]; then
         ssh -o ConnectTimeout=10 "$MEETING_NOTES_SSH" \
             "mkdir -p ${REMOTE_REPORTS_DIR}/${REPORT_SLUG_SYNC}" 2>/dev/null || true
@@ -270,8 +343,10 @@ elif [ -n "$NOTIFY_CMD" ]; then
         printf 'title: %s\n' "$ECHOBOX_REPORT_TITLE"
         printf 'url:   %s\n' "$ECHOBOX_REPORT_URL"
     } >> "$NOTIFY_LOG"
+    set +e
     NOTIFY_OUTPUT=$(bash -c "$NOTIFY_CMD" 2>&1)
     NOTIFY_EXIT=$?
+    set -e
     printf 'exit=%s\noutput:\n%s\n\n' "$NOTIFY_EXIT" "$NOTIFY_OUTPUT" >> "$NOTIFY_LOG"
     if [ "$NOTIFY_EXIT" -ne 0 ]; then
         echo "      Notification failed (exit=$NOTIFY_EXIT, see $NOTIFY_LOG)"

@@ -11,7 +11,9 @@ sys.path.insert(0, str(REPO))
 
 from echobox_recorder import EchoboxRecorder
 from echobox_recorder import EchoboxWatcher
+from echobox_recorder.recorder import audio_routing_ok
 from echobox_recorder.recorder import preferred_input_device
+from echobox_recorder.recorder import preferred_local_mic_device
 
 PASS = 0
 FAIL = 0
@@ -32,9 +34,14 @@ class FakeSoundDevice:
     @staticmethod
     def query_devices():
         return [
-            {"name": "MacBook Microphone", "max_input_channels": 1},
+            {"name": "iPhone de Marc Microphone", "max_input_channels": 1},
             {"name": "BlackHole 2ch", "max_input_channels": 2},
+            {"name": "MacBook Pro Microphone", "max_input_channels": 1},
         ]
+
+
+class FakeNoDefaultSoundDevice(FakeSoundDevice):
+    default = type("Default", (), {"device": [-1, -1]})()
 
 
 class FakeStream:
@@ -74,6 +81,24 @@ def main():
     try:
         check(EchoboxRecorder is not None and EchoboxWatcher is not None, "package imports")
         check(preferred_input_device(FakeSoundDevice) == 1, "preferred_input_device prefers BlackHole")
+        check(
+            preferred_input_device(FakeSoundDevice, preferred_name="blackhole") == 1,
+            "preferred_input_device honors configured remote device name",
+        )
+        check(
+            preferred_local_mic_device(FakeSoundDevice) == 2,
+            "preferred_local_mic_device trusts usable system default",
+        )
+        check(
+            preferred_local_mic_device(FakeNoDefaultSoundDevice) == 2,
+            "local mic fallback prefers built-in mic before Continuity iPhone",
+        )
+        check(
+            preferred_local_mic_device(FakeNoDefaultSoundDevice, preferred_name="iphone") == 0,
+            "configured local mic can explicitly select Continuity iPhone",
+        )
+        ok, reason = audio_routing_ok(target_output_name="Definitely Missing")
+        check(not ok and reason, "audio_routing_ok reports target mismatch")
 
         recorder = TestRecorder(tmp, "demo-model")
         recorder.start("roadmap")
@@ -95,6 +120,20 @@ def main():
             "[00:00] SPEAKER_00: hello world" in diarized_transcript.read_text(encoding="utf-8"),
             "transcript contains diarized speaker label",
         )
+
+        intervals = EchoboxRecorder._merged_padded_intervals(
+            [
+                {"start": 100, "end": 200},
+                {"start": 250, "end": 300},
+                {"start": 900, "end": 950},
+            ],
+            audio_length=1000,
+            padding=75,
+        )
+        check(intervals == [(25, 375), (825, 1000)], "VAD padded intervals are merged and clipped")
+
+        mapping = [(0.0, 10.0, 5.0), (5.0, 30.0, 2.0)]
+        check(EchoboxRecorder._remap_time(6.0, mapping) == 31.0, "VAD timestamp remap uses merged chunk offsets")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

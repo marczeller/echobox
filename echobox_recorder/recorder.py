@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import threading
 import tempfile
+import time
 import wave
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -33,12 +34,69 @@ def _import_mlx_whisper():
     return mlx_whisper
 
 
+def _import_numpy():
+    try:
+        import numpy as np
+    except Exception:  # pragma: no cover - numpy is a transitive dep of mlx-whisper/silero
+        return None
+    return np
+
+
 def slugify_hint(value: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
     return slug or "call"
 
 
-def preferred_input_device(sd_module: Any | None = None) -> int | str | None:
+def _device_name(device: Any) -> str:
+    return str(device.get("name", "")) if isinstance(device, dict) else ""
+
+
+def _device_channels(device: Any, key: str) -> int:
+    if not isinstance(device, dict):
+        return 0
+    try:
+        return int(device.get(key, 0) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _device_matches_name(device: Any, target_name: str, channel_key: str) -> bool:
+    if not target_name:
+        return False
+    if _device_channels(device, channel_key) <= 0:
+        return False
+    return target_name.lower() in _device_name(device).lower()
+
+
+def _find_device_by_name(
+    devices: list[Any],
+    target_name: str | None,
+    *,
+    channel_key: str,
+) -> int | None:
+    if not target_name:
+        return None
+    for index, device in enumerate(devices):
+        if _device_matches_name(device, target_name, channel_key):
+            return index
+    return None
+
+
+def _input_is_loopback_or_bundle(device: Any) -> bool:
+    name = _device_name(device).lower()
+    return "blackhole" in name or "aggregate" in name or "multi-output" in name
+
+
+def _input_is_continuity_device(device: Any) -> bool:
+    name = _device_name(device).lower()
+    return "iphone" in name or "ipad" in name or "continuity" in name
+
+
+def preferred_input_device(
+    sd_module: Any | None = None,
+    *,
+    preferred_name: str | None = None,
+) -> int | str | None:
     """Return BlackHole if available, otherwise the system default input device.
 
     BlackHole captures system audio (the other person's voice on a call),
@@ -47,11 +105,12 @@ def preferred_input_device(sd_module: Any | None = None) -> int | str | None:
     sd = sd_module or _import_sounddevice()
     try:
         devices = sd.query_devices()
+        named = _find_device_by_name(devices, preferred_name, channel_key="max_input_channels")
+        if named is not None:
+            return named
         for index, device in enumerate(devices):
-            if not isinstance(device, dict):
-                continue
-            name = str(device.get("name", "")).lower()
-            if "blackhole" in name and device.get("max_input_channels", 0) > 0:
+            name = _device_name(device).lower()
+            if "blackhole" in name and _device_channels(device, "max_input_channels") > 0:
                 return index
     except Exception:
         pass
@@ -65,7 +124,11 @@ def preferred_input_device(sd_module: Any | None = None) -> int | str | None:
     return None
 
 
-def preferred_local_mic_device(sd_module: Any | None = None) -> int | None:
+def preferred_local_mic_device(
+    sd_module: Any | None = None,
+    *,
+    preferred_name: str | None = None,
+) -> int | None:
     """Return the device index of the local user's microphone.
 
     macOS already tracks the user's active input device as the system default
@@ -88,13 +151,14 @@ def preferred_local_mic_device(sd_module: Any | None = None) -> int | None:
     except Exception:
         return None
 
+    named = _find_device_by_name(devices, preferred_name, channel_key="max_input_channels")
+    if named is not None:
+        return named
+
     def _usable(device: Any) -> bool:
-        if not isinstance(device, dict):
+        if _device_channels(device, "max_input_channels") <= 0:
             return False
-        if device.get("max_input_channels", 0) <= 0:
-            return False
-        name = str(device.get("name", "")).lower()
-        if "blackhole" in name or "aggregate" in name:
+        if _input_is_loopback_or_bundle(device):
             return False
         return True
 
@@ -109,12 +173,15 @@ def preferred_local_mic_device(sd_module: Any | None = None) -> int | None:
 
     external: list[int] = []
     internal: list[int] = []
+    continuity: list[int] = []
     for index, device in enumerate(devices):
         if not _usable(device):
             continue
-        name = str(device.get("name", "")).lower()
+        name = _device_name(device).lower()
         if "macbook" in name or "built-in" in name:
             internal.append(index)
+        elif _input_is_continuity_device(device):
+            continuity.append(index)
         else:
             external.append(index)
 
@@ -122,6 +189,8 @@ def preferred_local_mic_device(sd_module: Any | None = None) -> int | None:
         return external[0]
     if internal:
         return internal[0]
+    if continuity:
+        return continuity[0]
     return None
 
 
@@ -145,15 +214,18 @@ def macbook_pro_mic_device(sd_module: Any | None = None) -> int | None:
     return None
 
 
-def current_output_device() -> str | None:
-    """Return the lowercase name of the current system audio output device,
-    or None if SwitchAudioSource isn't installed or the query fails."""
+def current_audio_device(kind: str) -> str | None:
+    """Return the lowercase name of the current input/output device.
+
+    `kind` is passed to SwitchAudioSource as `-t` and should be "input" or
+    "output". None means the helper is unavailable or returned no usable value.
+    """
     sas = shutil.which("SwitchAudioSource")
     if not sas:
         return None
     try:
         result = subprocess.run(
-            [sas, "-c", "-t", "output"],
+            [sas, "-c", "-t", kind],
             capture_output=True, text=True, timeout=3, check=False,
         )
     except Exception:
@@ -163,7 +235,13 @@ def current_output_device() -> str | None:
     return result.stdout.strip().lower() or None
 
 
-def audio_routing_ok() -> tuple[bool, str]:
+def current_output_device() -> str | None:
+    """Return the lowercase name of the current system audio output device,
+    or None if SwitchAudioSource isn't installed or the query fails."""
+    return current_audio_device("output")
+
+
+def audio_routing_ok(*, target_output_name: str | None = None) -> tuple[bool, str]:
     """Read-only health check: is the system output routed through BlackHole
     (typically via a Multi-Output Device)?
 
@@ -174,14 +252,22 @@ def audio_routing_ok() -> tuple[bool, str]:
     """
     current = current_output_device()
     if current is None:
-        # SwitchAudioSource missing — we can't verify, so don't alarm.
+        return False, "Cannot determine current output device"
+    target = (target_output_name or "").strip().lower()
+    if target and target in current:
         return True, ""
-    if "multi-output" in current or "blackhole" in current:
+    if not target and ("multi-output" in current or "blackhole" in current):
         return True, ""
-    return False, f"Output is {current!r} — BlackHole won't receive audio"
+    expected = target_output_name or "a Multi-Output Device or BlackHole"
+    return False, f"Output is {current!r}; expected {expected!r}"
 
 
-def ensure_output_routes_to_blackhole(logger: Callable[[str], None] | None = None) -> None:
+def ensure_output_routes_to_blackhole(
+    logger: Callable[[str], None] | None = None,
+    *,
+    target_output_name: str | None = None,
+    auto_switch: bool = True,
+) -> None:
     """If BlackHole is the input device, ensure system output routes audio through it.
 
     AirPods (or any direct output) bypass BlackHole entirely, producing silent
@@ -191,6 +277,7 @@ def ensure_output_routes_to_blackhole(logger: Callable[[str], None] | None = Non
     log = logger or (lambda _: None)
     sas = shutil.which("SwitchAudioSource")
     if not sas:
+        log("WARNING: SwitchAudioSource unavailable; cannot verify BlackHole output routing")
         return  # can't check without SwitchAudioSource
 
     try:
@@ -199,10 +286,18 @@ def ensure_output_routes_to_blackhole(logger: Callable[[str], None] | None = Non
             capture_output=True, text=True, timeout=3, check=False,
         ).stdout.strip().lower()
     except Exception:
+        log("WARNING: Could not read current output device")
         return
 
-    if "multi-output" in current:
-        return  # already routing through Multi-Output Device
+    target = (target_output_name or "").strip().lower()
+    if target and target in current:
+        return
+    if not target and ("multi-output" in current or "blackhole" in current):
+        return
+    if not auto_switch:
+        expected = target_output_name or "Multi-Output Device"
+        log(f"WARNING: Output is '{current or 'unknown'}'; expected '{expected}' for BlackHole capture")
+        return
 
     try:
         all_outputs = subprocess.run(
@@ -213,16 +308,17 @@ def ensure_output_routes_to_blackhole(logger: Callable[[str], None] | None = Non
         return
 
     for line in all_outputs.splitlines():
-        if "multi-output" in line.strip().lower():
-            target = line.strip()
+        candidate = line.strip()
+        lowered = candidate.lower()
+        if (target and target in lowered) or (not target and "multi-output" in lowered):
             try:
                 subprocess.run(
-                    [sas, "-s", target, "-t", "output"],
+                    [sas, "-s", candidate, "-t", "output"],
                     capture_output=True, text=True, timeout=3, check=True,
                 )
-                log(f"Auto-switched output to '{target}' (was '{current}') to route audio through BlackHole")
+                log(f"Auto-switched output to '{candidate}' (was '{current}') to route audio through BlackHole")
             except Exception as exc:
-                log(f"Failed to switch output to '{target}': {exc}")
+                log(f"Failed to switch output to '{candidate}': {exc}")
             return
 
     log(f"WARNING: Output is '{current}' — BlackHole won't receive audio. "
@@ -260,6 +356,10 @@ class EchoboxRecorder:
         sample_rate: int = 16_000,
         channels: int = 1,
         audio_device: int | str | None = None,
+        remote_device_name: str | None = None,
+        local_device_name: str | None = None,
+        output_device_name: str | None = None,
+        auto_switch_output: bool = True,
         whisper_language: str | None = None,
         logger: Callable[[str], None] | None = None,
         capture_backend: str = "sounddevice",
@@ -268,6 +368,7 @@ class EchoboxRecorder:
         swift_helper_device_name: str | None = None,
         swift_helper_live_transcript: bool = False,
         swift_helper_whisperkit_model: str = "openai_whisper-tiny",
+        silence_peak_threshold: int = 500,
     ) -> None:
         self.output_dir = Path(output_dir).expanduser()
         self.audio_dir = (
@@ -277,6 +378,10 @@ class EchoboxRecorder:
         self.sample_rate = sample_rate
         self.channels = channels
         self.audio_device = audio_device
+        self.remote_device_name = remote_device_name
+        self.local_device_name = local_device_name
+        self.output_device_name = output_device_name
+        self.auto_switch_output = bool(auto_switch_output)
         self.whisper_language = whisper_language
         self.logger = logger or (lambda _message: None)
         self._wav_lock = threading.Lock()
@@ -284,6 +389,11 @@ class EchoboxRecorder:
         self._local_wav_lock = threading.Lock()
         self._active_local_wav_handle: wave.Wave_write | None = None
         self._session: RecordingSession | None = None
+        self.silence_peak_threshold = int(silence_peak_threshold)
+        self._np = _import_numpy()
+        # monotonic timestamp of the most recent audio chunk whose peak
+        # crossed `silence_peak_threshold`. 0.0 means "no session / unknown".
+        self._last_sound_at: float = 0.0
         self.capture_backend = capture_backend
         self.sessions_root = (
             Path(sessions_root).expanduser()
@@ -356,7 +466,7 @@ class EchoboxRecorder:
     def resolve_input_device(self, sd_module: Any | None = None) -> int | str | None:
         sd = sd_module or _import_sounddevice()
         if self.audio_device in (None, ""):
-            return preferred_input_device(sd)
+            return preferred_input_device(sd, preferred_name=self.remote_device_name)
         if isinstance(self.audio_device, int):
             return self.audio_device
         if str(self.audio_device).isdigit():
@@ -370,6 +480,25 @@ class EchoboxRecorder:
                 return index
         return self.audio_device
 
+    def _note_audio_activity(self, indata) -> None:  # noqa: ANN001
+        np = self._np
+        if np is None or self.silence_peak_threshold <= 0:
+            return
+        try:
+            samples = np.frombuffer(indata, dtype=np.int16)
+        except Exception:
+            return
+        if samples.size == 0:
+            return
+        # Peak magnitude is cheaper than RMS and sufficient to distinguish a
+        # silent room from speech. int16 abs max fits in int32 comfortably.
+        peak = int(np.abs(samples).max())
+        if peak >= self.silence_peak_threshold:
+            self._last_sound_at = time.monotonic()
+
+    def last_sound_monotonic(self) -> float:
+        return self._last_sound_at
+
     def _stream_callback(self, indata, frames, time_info, status) -> None:  # noqa: ANN001
         if status:
             self.logger(f"Recorder warning: {status}")
@@ -378,6 +507,7 @@ class EchoboxRecorder:
             if wav_handle is None:
                 return
             wav_handle.writeframes(bytes(indata))
+        self._note_audio_activity(indata)
 
     def _local_stream_callback(self, indata, frames, time_info, status) -> None:  # noqa: ANN001
         if status:
@@ -387,6 +517,7 @@ class EchoboxRecorder:
             if wav_handle is None:
                 return
             wav_handle.writeframes(bytes(indata))
+        self._note_audio_activity(indata)
 
     def _create_stream(self, device: int | str | None):
         sd = _import_sounddevice()
@@ -428,7 +559,7 @@ class EchoboxRecorder:
         """
         sd = _import_sounddevice()
         try:
-            primary_idx = preferred_local_mic_device(sd)
+            primary_idx = preferred_local_mic_device(sd, preferred_name=self.local_device_name)
         except Exception as exc:
             self.logger(f"Local mic lookup failed: {exc}")
             return None
@@ -460,10 +591,11 @@ class EchoboxRecorder:
             if r and r not in rates:
                 rates.append(r)
 
-        candidates: list[tuple[int, str, int]] = [
+        primary_candidates: list[tuple[int, str, int]] = [
             (primary_idx, primary_name, r) for r in rates
         ]
 
+        fallback_candidates: list[tuple[int, str, int]] = []
         mbp_idx = macbook_pro_mic_device(sd)
         if mbp_idx is not None and mbp_idx != primary_idx:
             try:
@@ -475,12 +607,41 @@ class EchoboxRecorder:
                 )
             except Exception:
                 mbp_name = "MacBook Pro Microphone"
-            candidates.append((mbp_idx, mbp_name, 48000))
+            fallback_candidates.append((mbp_idx, mbp_name, 48000))
+
+        # Self-heal pass: PortAudio's CoreAudio device cache drifts in
+        # long-lived processes (BT reconnects, format changes), causing
+        # paInternalError (-9986) on devices that work fine in fresh
+        # processes. If the primary fails with -9986 on every rate, reset
+        # PortAudio and retry the primary at its reported rate once before
+        # falling back to MBP mic.
+        def _refresh_portaudio() -> None:
+            try:
+                sd._terminate()
+                sd._initialize()
+            except Exception as exc:
+                self.logger(f"PortAudio refresh failed: {exc}")
+
+        # Build ordered candidate list; on primary exhaustion with internal
+        # errors we splice in a refreshed retry before the fallback list.
+        primary_failed_internal = False
+
+        def _build_candidates() -> list[tuple[int, str, int]]:
+            nonlocal primary_failed_internal
+            ordered = list(primary_candidates)
+            if primary_failed_internal:
+                ordered.append((primary_idx, primary_name, rates[0]))
+            ordered.extend(fallback_candidates)
+            return ordered
 
         self.audio_dir.mkdir(parents=True, exist_ok=True)
         local_wav_path = self.audio_dir / f"{transcript_id}-local.wav"
         last_error: str = ""
-        for dev_idx, dev_name, sr in candidates:
+        i = 0
+        candidates: list[tuple[int, str, int]] = _build_candidates()
+        while i < len(candidates):
+            dev_idx, dev_name, sr = candidates[i]
+            i += 1
             try:
                 wav_handle = wave.open(str(local_wav_path), "wb")
                 wav_handle.setnchannels(1)
@@ -509,6 +670,22 @@ class EchoboxRecorder:
                         local_wav_path.unlink(missing_ok=True)
                     except Exception:
                         pass
+                # Detect stale PortAudio CoreAudio cache: paInternalError on
+                # the primary device. If we exhausted primary rates without
+                # success and at least one was -9986, refresh PortAudio and
+                # splice one more primary attempt before the fallback list.
+                if dev_idx == primary_idx and "-9986" in str(exc):
+                    primary_failed_internal = True
+                if (
+                    primary_failed_internal
+                    and i == len(primary_candidates)
+                    and len(candidates) == len(primary_candidates) + len(fallback_candidates)
+                ):
+                    self.logger(
+                        f"Refreshing PortAudio (paInternalError on {primary_name}); retrying once"
+                    )
+                    _refresh_portaudio()
+                    candidates = _build_candidates()
                 continue
             self.logger(
                 f"Local mic track: {dev_name} (device={dev_idx}, {sr}Hz, 1ch)"
@@ -543,6 +720,9 @@ class EchoboxRecorder:
     def start(self, session_hint: str = "call") -> RecordingSession:
         if self._session is not None:
             raise RuntimeError("Recorder already active")
+        # Seed the silence timer so a freshly-started session isn't immediately
+        # considered silent before any audio has had a chance to arrive.
+        self._last_sound_at = time.monotonic()
         if self.capture_backend == "swift_helper":
             return self._start_swift(session_hint)
         return self._start_sounddevice(session_hint)
@@ -560,7 +740,11 @@ class EchoboxRecorder:
             try:
                 dev_info = sd.query_devices(device)
                 if isinstance(dev_info, dict) and "blackhole" in str(dev_info.get("name", "")).lower():
-                    ensure_output_routes_to_blackhole(self.logger)
+                    ensure_output_routes_to_blackhole(
+                        self.logger,
+                        target_output_name=self.output_device_name,
+                        auto_switch=self.auto_switch_output,
+                    )
             except Exception:
                 pass
         temp_fd, temp_path_raw = tempfile.mkstemp(
@@ -727,9 +911,12 @@ class EchoboxRecorder:
             mapping: list[tuple[float, float, float]] = []
             concat_offset = 0.0
 
-            for ts in timestamps:
-                start_sample = max(0, ts["start"] - padding)
-                end_sample = min(len(audio), ts["end"] + padding)
+            intervals = self._merged_padded_intervals(
+                timestamps,
+                audio_length=len(audio),
+                padding=padding,
+            )
+            for start_sample, end_sample in intervals:
                 chunk = audio[start_sample:end_sample]
                 original_start = start_sample / self.sample_rate
                 duration = len(chunk) / self.sample_rate
@@ -743,6 +930,36 @@ class EchoboxRecorder:
         except Exception as exc:
             self.logger(f"VAD preprocessing failed: {exc}")
             return None
+
+    @staticmethod
+    def _merged_padded_intervals(
+        timestamps: list[dict[str, Any]],
+        *,
+        audio_length: int,
+        padding: int,
+    ) -> list[tuple[int, int]]:
+        intervals: list[tuple[int, int]] = []
+        for ts in timestamps:
+            try:
+                start = int(ts["start"])
+                end = int(ts["end"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            start_sample = max(0, start - padding)
+            end_sample = min(audio_length, end + padding)
+            if end_sample <= start_sample:
+                continue
+            intervals.append((start_sample, end_sample))
+
+        intervals.sort()
+        merged: list[tuple[int, int]] = []
+        for start_sample, end_sample in intervals:
+            if not merged or start_sample > merged[-1][1]:
+                merged.append((start_sample, end_sample))
+                continue
+            prev_start, prev_end = merged[-1]
+            merged[-1] = (prev_start, max(prev_end, end_sample))
+        return merged
 
     def _remap_timestamps(self, segments: list[dict[str, Any]], mapping: list[tuple[float, float, float]]) -> list[dict[str, Any]]:
         """Remap Whisper segment timestamps from concatenated audio back to original time."""
@@ -1184,5 +1401,6 @@ class EchoboxRecorder:
             raise
         finally:
             self._session = None
+            self._last_sound_at = 0.0
         self.logger(f"Recording finished: {session.transcript_path}")
         return session.transcript_path

@@ -1,14 +1,16 @@
 import AVFoundation
 import CoreAudio
 import AudioToolbox
+import CoreMedia
 import Darwin
 import Foundation
+import ScreenCaptureKit
 
 // MARK: - CLI
 
 struct CLIOptions {
     var sessionDir: URL
-    var source: String          // "default-input" | "process-tap" | "test-signal"
+    var source: String          // "default-input" | "process-tap" | "screencapturekit" | "test-signal"
     var sampleRate: Double
     var channels: UInt32
     var deviceNameSubstring: String?
@@ -86,7 +88,8 @@ struct CLIOptions {
 
         Options:
           --session-dir <path>     Directory to write session.json and audio/mic.wav (required)
-          --source <kind>          Capture source: default-input (default), process-tap
+          --source <kind>          Capture source: default-input (default), process-tap,
+                                   screencapturekit, test-signal
           --sample-rate <hz>       Output sample rate (default: 16000)
           --channels <n>           Output channel count (default: 1)
           --device-name <substr>   For default-input: pick the first input device
@@ -385,7 +388,7 @@ func createProcessTapAggregate() -> (tap: AudioObjectID, aggregate: AudioObjectI
 
 // MARK: - Capture engine (AVAudioEngine path)
 
-final class CaptureEngine {
+final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate {
     let opts: CLIOptions
     let wavURL: URL
     let sessionID: String
@@ -404,6 +407,11 @@ final class CaptureEngine {
     var halInputFormat: AVAudioFormat?
     var halOutputFormat: AVAudioFormat?
 
+    // ScreenCaptureKit source
+    var scStream: SCStream?
+    let scQueue = DispatchQueue(label: "echobox.screencapturekit.audio")
+    var scTargetFormat: AVAudioFormat?
+
     // Metrics
     private let metricsLock = NSLock()
     private var totalFramesWritten: UInt64 = 0
@@ -417,6 +425,7 @@ final class CaptureEngine {
         let name = opts.sessionDir.lastPathComponent
         self.sessionID = name.isEmpty ? UUID().uuidString : name
         self.wavURL = opts.sessionDir.appendingPathComponent("audio/mic.wav")
+        super.init()
     }
 
     func run() -> Int32 {
@@ -450,6 +459,9 @@ final class CaptureEngine {
                 emit(["type": "error", "msg": "process-tap requires macOS 14.2+"])
                 return 1
             }
+        }
+        if opts.source == "screencapturekit" {
+            return runScreenCaptureKit()
         }
         guard opts.source == "default-input" else {
             emit(["type": "error", "msg": "unknown source: \(opts.source)"])
@@ -584,6 +596,221 @@ final class CaptureEngine {
         levelAccum += sumSq
         levelSampleCount &+= UInt64(count)
         metricsLock.unlock()
+    }
+
+    // MARK: - ScreenCaptureKit source
+
+    private func runScreenCaptureKit() -> Int32 {
+        guard
+            let targetFormat = AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: opts.sampleRate,
+                channels: AVAudioChannelCount(opts.channels),
+                interleaved: false
+            )
+        else {
+            emit(["type": "error", "msg": "screencapturekit target format creation failed"])
+            return 1
+        }
+        self.scTargetFormat = targetFormat
+
+        do {
+            self.wav = try WavWriter(
+                url: wavURL,
+                sampleRate: UInt32(opts.sampleRate),
+                channels: UInt16(opts.channels),
+            )
+        } catch {
+            emit(["type": "error", "msg": "wav open failed: \(error)"])
+            return 1
+        }
+
+        if opts.emitLiveTranscript {
+            let transcriberConfig = StreamingTranscriber.Config(
+                modelName: opts.whisperKitModel,
+                windowSeconds: 12.0,
+                stepSeconds: 0.75,
+                minNewAudioSeconds: 0.5,
+                sampleRate: opts.sampleRate,
+            )
+            self.transcriber = StreamingTranscriber(config: transcriberConfig) { event in
+                emit(event)
+            }
+            self.transcriber?.bootstrap()
+        }
+
+        do {
+            try startScreenCaptureKitStream()
+        } catch {
+            emit([
+                "type": "error",
+                "msg": "screencapturekit start failed: \(error.localizedDescription) (grant Screen & System Audio Recording permission if prompted)",
+            ])
+            wav?.close()
+            return 1
+        }
+
+        installSignalHandlers()
+        emit([
+            "type": "started",
+            "session_id": sessionID,
+            "source": opts.source,
+            "sample_rate": opts.sampleRate,
+            "channels": opts.channels,
+            "wav_path": wavURL.path,
+        ])
+
+        let heartbeatTimer = DispatchSource.makeTimerSource(queue: .global())
+        heartbeatTimer.schedule(deadline: .now() + opts.heartbeatInterval, repeating: opts.heartbeatInterval)
+        heartbeatTimer.setEventHandler { [weak self] in self?.emitHeartbeat() }
+        heartbeatTimer.resume()
+        let levelTimer = DispatchSource.makeTimerSource(queue: .global())
+        levelTimer.schedule(deadline: .now() + opts.levelInterval, repeating: opts.levelInterval)
+        levelTimer.setEventHandler { [weak self] in self?.emitLevel() }
+        levelTimer.resume()
+
+        while stopFlag.value {
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        heartbeatTimer.cancel()
+        levelTimer.cancel()
+        transcriber?.stop()
+        stopScreenCaptureKitStream()
+        wav?.close()
+
+        let duration = Date().timeIntervalSince(startedAt)
+        try? writeSessionJson(captureStatus: "completed", endedAt: Date(), durationSeconds: duration)
+        emit([
+            "type": "stopped",
+            "frames_written": totalFramesWritten,
+            "duration_seconds": duration,
+        ])
+        return 0
+    }
+
+    private func startScreenCaptureKitStream() throws {
+        let semaphore = DispatchSemaphore(value: 0)
+        var result: Result<Void, Error>?
+
+        Task {
+            do {
+                let content = try await SCShareableContent.excludingDesktopWindows(
+                    false,
+                    onScreenWindowsOnly: true
+                )
+                guard let display = content.displays.first else {
+                    throw NSError(
+                        domain: "echobox-capture",
+                        code: 30,
+                        userInfo: [NSLocalizedDescriptionKey: "no shareable displays found"]
+                    )
+                }
+
+                let filter = SCContentFilter(display: display, excludingWindows: [])
+                let config = SCStreamConfiguration()
+                config.capturesAudio = true
+                config.sampleRate = Int(opts.sampleRate)
+                config.channelCount = Int(opts.channels)
+                config.width = 2
+                config.height = 2
+                config.minimumFrameInterval = CMTime(value: 1, timescale: 1)
+
+                let stream = SCStream(filter: filter, configuration: config, delegate: self)
+                try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: scQueue)
+                try await stream.startCapture()
+                self.scStream = stream
+                result = .success(())
+            } catch {
+                result = .failure(error)
+            }
+            semaphore.signal()
+        }
+
+        semaphore.wait()
+        try result?.get()
+    }
+
+    private func stopScreenCaptureKitStream() {
+        guard let stream = scStream else { return }
+        let semaphore = DispatchSemaphore(value: 0)
+        Task {
+            do {
+                try await stream.stopCapture()
+            } catch {
+                logStderr("screencapturekit stop failed: \(error)")
+            }
+            semaphore.signal()
+        }
+        semaphore.wait()
+        scStream = nil
+    }
+
+    func stream(
+        _ stream: SCStream,
+        didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
+        of outputType: SCStreamOutputType
+    ) {
+        guard outputType == .audio else { return }
+        processScreenCaptureKitSampleBuffer(sampleBuffer)
+    }
+
+    func stream(_ stream: SCStream, didStopWithError error: Error) {
+        emit(["type": "error", "msg": "screencapturekit stream stopped: \(error.localizedDescription)"])
+        stopFlag.value = false
+    }
+
+    private func processScreenCaptureKitSampleBuffer(_ sampleBuffer: CMSampleBuffer) {
+        guard CMSampleBufferDataIsReady(sampleBuffer) else { return }
+        guard let formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer) else { return }
+        guard let streamDescription = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription) else { return }
+        guard let inputFormat = AVAudioFormat(streamDescription: streamDescription) else { return }
+        guard let targetFormat = scTargetFormat else { return }
+
+        if converter == nil
+            || converter?.inputFormat.sampleRate != inputFormat.sampleRate
+            || converter?.inputFormat.channelCount != inputFormat.channelCount {
+            converter = AVAudioConverter(from: inputFormat, to: targetFormat)
+            converter?.sampleRateConverterAlgorithm = AVSampleRateConverterAlgorithm_Normal
+            converter?.sampleRateConverterQuality = AVAudioQuality.medium.rawValue
+            logStderr("screencapturekit audio format: \(inputFormat.sampleRate) Hz, \(inputFormat.channelCount) ch")
+        }
+
+        let frames = AVAudioFrameCount(CMSampleBufferGetNumSamples(sampleBuffer))
+        let maxBuffers = max(1, Int(inputFormat.channelCount))
+        let audioBuffers = AudioBufferList.allocate(maximumBuffers: maxBuffers)
+        defer { audioBuffers.unsafeMutablePointer.deallocate() }
+        let audioBufferListSize = MemoryLayout<AudioBufferList>.size
+            + MemoryLayout<AudioBuffer>.size * (maxBuffers - 1)
+
+        var blockBuffer: CMBlockBuffer?
+        let status = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
+            sampleBuffer,
+            bufferListSizeNeededOut: nil,
+            bufferListOut: audioBuffers.unsafeMutablePointer,
+            bufferListSize: audioBufferListSize,
+            blockBufferAllocator: kCFAllocatorDefault,
+            blockBufferMemoryAllocator: kCFAllocatorDefault,
+            flags: UInt32(kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment),
+            blockBufferOut: &blockBuffer
+        )
+        guard status == noErr else {
+            logStderr("screencapturekit audio buffer extraction failed: \(status)")
+            return
+        }
+
+        guard
+            let inBuffer = AVAudioPCMBuffer(
+                pcmFormat: inputFormat,
+                bufferListNoCopy: audioBuffers.unsafeMutablePointer,
+                deallocator: nil
+            )
+        else {
+            return
+        }
+        inBuffer.frameLength = frames
+        withExtendedLifetime(blockBuffer) {
+            process(buffer: inBuffer, targetFormat: targetFormat)
+        }
     }
 
     // MARK: - Process-tap path (raw HAL)

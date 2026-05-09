@@ -45,6 +45,9 @@ def main():
     env["ECHOBOX_STATE_DIR"] = str(data)
     env["ECHOBOX_DISABLE_TEE_LOGGING"] = "true"
     env["ECHOBOX_MLX_URL"] = "http://127.0.0.1:9/v1/chat/completions"
+    env["ECHOBOX_MLX_STARTUP_TIMEOUT_SECONDS"] = "1"
+    env["ECHOBOX_MEETING_NOTES_SSH"] = ""
+    env["ECHOBOX_PUBLISH_PLATFORM"] = "local"
 
     try:
         orchestrator = subprocess.run(

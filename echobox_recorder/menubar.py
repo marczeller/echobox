@@ -38,6 +38,7 @@ class EchoboxMenuBar(rumps.App):
         raw_retention_days: int = 7,
         mixed_retention_days: int = 0,
         sweep_interval_minutes: int = 60,
+        output_device_name: str | None = None,
         on_quit: Callable[[], None] | None = None,
         enable_caption_panel: bool = False,
     ) -> None:
@@ -48,6 +49,7 @@ class EchoboxMenuBar(rumps.App):
         self.report_dir = report_dir
         self.voices_dir = voices_dir or (REPO_DIR / "voices")
         self._on_quit = on_quit
+        self._output_device_name = output_device_name
         self._poll_lock = threading.Lock()
         self._housekeeping_lock = threading.Lock()
 
@@ -446,7 +448,7 @@ class EchoboxMenuBar(rumps.App):
         )
 
     def _refresh_routing_status(self) -> None:
-        ok, reason = audio_routing_ok()
+        ok, reason = audio_routing_ok(target_output_name=self._output_device_name)
         if ok:
             # Hide the item by setting an empty title when routing is fine.
             self._routing_status_item.title = ""

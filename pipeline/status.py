@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import shutil
 import subprocess
 import sys
@@ -18,10 +19,66 @@ def has_command(name: str) -> bool:
 
 def module_importable(name: str) -> bool:
     try:
-        importlib.import_module(name)
-        return True
-    except (ImportError, ModuleNotFoundError):
+        return importlib.util.find_spec(name) is not None
+    except (ImportError, ModuleNotFoundError, ValueError):
         return False
+
+
+def sounddevice_summary() -> tuple[bool, str]:
+    try:
+        import sounddevice as sd
+    except Exception:
+        return False, "not importable"
+    try:
+        devices = sd.query_devices()
+    except Exception as exc:
+        return False, f"query failed: {exc}"
+    if not devices:
+        return False, "no devices visible"
+    inputs = []
+    outputs = []
+    for device in devices:
+        if not isinstance(device, dict):
+            continue
+        name = str(device.get("name", "unknown"))
+        try:
+            if int(device.get("max_input_channels", 0) or 0) > 0:
+                inputs.append(name)
+            if int(device.get("max_output_channels", 0) or 0) > 0:
+                outputs.append(name)
+        except (TypeError, ValueError):
+            continue
+    return True, f"{len(inputs)} inputs, {len(outputs)} outputs"
+
+
+def current_audio(kind: str) -> str:
+    sas = shutil.which("SwitchAudioSource")
+    if not sas:
+        return "unknown (SwitchAudioSource missing)"
+    try:
+        result = subprocess.run(
+            [sas, "-c", "-t", kind],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+    except Exception as exc:
+        return f"unknown ({exc})"
+    if result.returncode != 0:
+        return "unknown"
+    return result.stdout.strip() or "unknown"
+
+
+def swift_helper_binary_status(repo_dir: Path) -> tuple[bool, str]:
+    candidates = (
+        repo_dir / "swift" / "echobox-capture" / ".build" / "release" / "echobox-capture",
+        repo_dir / "swift" / "echobox-capture" / ".build" / "debug" / "echobox-capture",
+    )
+    for candidate in candidates:
+        if candidate.exists():
+            return True, str(candidate)
+    return False, "not built"
 
 
 def can_reach_models(mlx_url: str) -> bool:
@@ -126,6 +183,12 @@ def main() -> int:
         ready = False
         issues.append("  - Install PyYAML: python3 -m pip install --user pyyaml")
 
+    capture_backend = str(config.get("capture.backend", "sounddevice"))
+    if capture_backend == "screencapturekit":
+        capture_source = "screencapturekit"
+    else:
+        capture_source = str(config.get("capture.source", "default-input"))
+
     if module_importable("mlx_whisper"):
         print("  mlx-whisper:    importable")
     else:
@@ -133,12 +196,31 @@ def main() -> int:
         ready = False
         issues.append("  - Install mlx-whisper: python3 -m pip install --user mlx-whisper")
 
-    if module_importable("sounddevice"):
-        print("  sounddevice:    importable")
+    sound_ok, sound_detail = sounddevice_summary()
+    if sound_ok:
+        print(f"  sounddevice:    importable ({sound_detail})")
     else:
-        print("  sounddevice:    NOT FOUND")
-        ready = False
-        issues.append("  - Install sounddevice: python3 -m pip install --user sounddevice")
+        print(f"  sounddevice:    NOT READY ({sound_detail})")
+        if capture_backend == "sounddevice":
+            ready = False
+            if sound_detail == "not importable":
+                issues.append("  - Install sounddevice: python3 -m pip install --user sounddevice")
+            else:
+                issues.append("  - Run Echobox in a user GUI session with microphone/audio-device access")
+
+    print(f"  Audio input:    {current_audio('input')}")
+    print(f"  Audio output:   {current_audio('output')}")
+    print(f"  Capture:        {capture_backend} (source={capture_source})")
+    if capture_backend in {"swift_helper", "screencapturekit"}:
+        helper_ok, helper_detail = swift_helper_binary_status(Path(__file__).resolve().parent.parent)
+        if helper_ok:
+            print(f"  Swift helper:   built ({helper_detail})")
+        else:
+            print(f"  Swift helper:   NOT BUILT ({helper_detail})")
+            ready = False
+            issues.append("  - Build the helper: cd swift/echobox-capture && swift build -c release")
+        if capture_backend == "screencapturekit":
+            print("  SCK permission: grant Screen & System Audio Recording if prompted")
 
     if module_importable("pyannote.audio"):
         print("  pyannote:       importable")

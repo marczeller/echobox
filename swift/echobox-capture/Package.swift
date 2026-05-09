@@ -17,7 +17,9 @@ let package = Package(
             linkerSettings: [
                 .linkedFramework("CoreAudio"),
                 .linkedFramework("AudioToolbox"),
+                .linkedFramework("CoreMedia"),
                 .linkedFramework("AVFoundation"),
+                .linkedFramework("ScreenCaptureKit"),
                 .linkedFramework("Foundation"),
                 .unsafeFlags([
                     "-Xlinker", "-sectcreate",

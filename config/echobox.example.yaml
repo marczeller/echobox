@@ -13,15 +13,29 @@ capture:
   #     supports live transcription, session-directory layout, and the optional
   #     Core Audio process-tap source. Requires building the helper:
   #         cd swift/echobox-capture && swift build -c release
+  #   "screencapturekit" (opt-in) — uses the Swift helper's ScreenCaptureKit source
+  #     for system audio capture. Requires macOS Screen & System Audio Recording
+  #     permission and does not require BlackHole.
   backend: sounddevice
   # source: only used when backend=swift_helper
   #   "default-input"  — capture from the default macOS input (BlackHole when set)
   #   "process-tap"    — Core Audio process tap, no BlackHole required (macOS 14.2+)
+  #   "screencapturekit" — ScreenCaptureKit system audio, no BlackHole required
   #   "test-signal"    — synthetic 440 Hz sine wave (CI / smoke tests)
   source: default-input
   # device_name: substring filter for selecting an input device (case-insensitive).
   # Only used when backend=swift_helper and source=default-input. Example: "BlackHole"
   device_name: ""
+  # Device names for the sounddevice backend. Names are matched as substrings.
+  # remote_device_name should normally be BlackHole. local_device_name is optional;
+  # when unset, Echobox uses the current system input, then a stable built-in mic.
+  # output_device_name is the target system output used for BlackHole routing.
+  remote_device_name: "BlackHole"
+  local_device_name: ""
+  output_device_name: "Multi-Output Device"
+  # auto_switch_output true lets Echobox switch output to output_device_name when
+  # BlackHole is selected but system output would bypass it.
+  auto_switch_output: true
   # live_transcript: enable WhisperKit streaming inside the Swift helper.
   # Only used when backend=swift_helper. Opens a floating caption panel during
   # recording; the panel is hidden from screen-share (NSWindowSharingNone).
@@ -34,6 +48,27 @@ capture:
   # sessions_root: where session directories are stored (when backend=swift_helper).
   # Defaults to <data_dir>/sessions.
   sessions_root: ""
+
+# --- Recorder safety gates ---
+# These guard against a meeting tab being left open indefinitely. Without them,
+# the watcher keeps recording until the tab closes — which can produce multi-hour
+# files full of silence.
+recorder:
+  # Hard ceiling per recording session. When hit, the current session is stopped
+  # and published, and a new session starts immediately if a meeting tab is
+  # still detected. This keeps genuine long calls but chunks them into reports.
+  # Set to 0 to disable.
+  max_recording_seconds: 3600
+  # If neither the remote nor local track exceeds silence_peak_threshold for
+  # this many seconds, stop the session (no auto-restart). Catches the common
+  # "forgot to close the meet tab" case where the room is empty.
+  # Set to 0 to disable.
+  silence_timeout_seconds: 600
+  # Peak int16 magnitude above which a chunk counts as "not silence". Ambient
+  # noise is typically under 200; normal speech peaks above 2000. Lower it if
+  # silence stops fire during genuine soft-spoken calls; raise it if they
+  # never fire despite a quiet empty room.
+  silence_peak_threshold: 500
 
 # --- Whisper transcription ---
 whisper_model: mlx-community/whisper-large-v3-mlx
@@ -51,6 +86,10 @@ mlx_model: mlx-community/Qwen3-Next-80B-A3B-Instruct-6bit
 mlx_url: http://localhost:8090/v1/chat/completions
 # Install the MLX server:  pip install mlx-lm
 # Start before enrichment: python -m mlx_lm server --model <model_name> --port 8090
+mlx_launchd_label: com.echobox.mlx-server
+# LaunchAgent label to kickstart for on-demand local enrichment. Must serve mlx_url.
+mlx_startup_timeout_seconds: 90
+# How long the orchestrator waits for the on-demand MLX server /models endpoint.
 mlx_timeout_seconds: 600
 # Increase this on slower machines or with larger prompts/models.
 

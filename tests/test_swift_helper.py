@@ -193,6 +193,29 @@ class SwiftHelperBackendTests(unittest.TestCase):
         self.assertIsNotNone(status)
         self.assertIn("heartbeat", status)
 
+    def test_screencapturekit_source_is_passed_to_helper(self) -> None:
+        backend = SwiftHelperBackend(
+            sessions_root=self.sessions_root,
+            binary_path=self.fake_binary,
+            source="screencapturekit",
+        )
+        captured_argv: list[str] = []
+        fake = FakeProcess([
+            '{"type":"started","session_id":"sck","source":"screencapturekit","sample_rate":16000,"channels":1,"wav_path":"/tmp"}\n',
+            '{"type":"stopped","frames_written":0,"duration_seconds":0.0}\n',
+        ])
+
+        def fake_popen(argv: list[str], **_kwargs: object) -> FakeProcess:
+            captured_argv.extend(argv)
+            return fake
+
+        with mock.patch.object(subprocess, "Popen", side_effect=fake_popen):
+            backend.start(session_id="sck", transcript_path=self.tmpdir / "sck.txt")
+
+        self.assertIn("--source", captured_argv)
+        source_index = captured_argv.index("--source")
+        self.assertEqual(captured_argv[source_index + 1], "screencapturekit")
+
 
 if __name__ == "__main__":
     unittest.main()

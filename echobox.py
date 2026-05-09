@@ -426,9 +426,17 @@ def cmd_watch(ctx: AppContext, _args: argparse.Namespace) -> int:
         with child_lock:
             child_processes.append(child)
 
-    capture_backend = (get_config(ctx.config, "capture.backend", "sounddevice") or "sounddevice").strip()
+    requested_capture_backend = (get_config(ctx.config, "capture.backend", "sounddevice") or "sounddevice").strip()
+    capture_backend = requested_capture_backend
     swift_source = (get_config(ctx.config, "capture.source", "default-input") or "default-input").strip()
+    if requested_capture_backend == "screencapturekit":
+        capture_backend = "swift_helper"
+        swift_source = "screencapturekit"
     swift_device_name = get_config(ctx.config, "capture.device_name", "") or None
+    remote_device_name = get_config(ctx.config, "capture.remote_device_name", "") or None
+    local_device_name = get_config(ctx.config, "capture.local_device_name", "") or None
+    output_device_name = get_config(ctx.config, "capture.output_device_name", "") or None
+    auto_switch_output = (get_config(ctx.config, "capture.auto_switch_output", "true") or "true").strip().lower() == "true"
     swift_live_transcript = (get_config(ctx.config, "capture.live_transcript", "false") or "false").strip().lower() == "true"
     swift_whisperkit_model = (get_config(ctx.config, "capture.whisperkit_model", "openai_whisper-tiny") or "openai_whisper-tiny").strip()
     sessions_root_cfg = get_config(ctx.config, "capture.sessions_root", "") or ""
@@ -438,11 +446,26 @@ def cmd_watch(ctx: AppContext, _args: argparse.Namespace) -> int:
         else ctx.data_dir / "sessions"
     )
 
+    def _num_cfg(key: str, default: float) -> float:
+        raw = get_config(ctx.config, key, str(default))
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            return default
+
+    max_recording_seconds = _num_cfg("recorder.max_recording_seconds", 3600.0)
+    silence_timeout_seconds = _num_cfg("recorder.silence_timeout_seconds", 600.0)
+    silence_peak_threshold = int(_num_cfg("recorder.silence_peak_threshold", 500.0))
+
     recorder = EchoboxRecorder(
         output_dir=ctx.transcript_dir,
         audio_dir=ctx.audio_dir,
         whisper_model=get_config(ctx.config, "whisper_model", "mlx-community/whisper-large-v3-mlx"),
         whisper_language=get_config(ctx.config, "whisper_language", None) or None,
+        remote_device_name=remote_device_name,
+        local_device_name=local_device_name,
+        output_device_name=output_device_name,
+        auto_switch_output=auto_switch_output,
         logger=emit,
         capture_backend=capture_backend,
         sessions_root=sessions_root,
@@ -450,10 +473,20 @@ def cmd_watch(ctx: AppContext, _args: argparse.Namespace) -> int:
         swift_helper_device_name=swift_device_name,
         swift_helper_live_transcript=swift_live_transcript,
         swift_helper_whisperkit_model=swift_whisperkit_model,
+        silence_peak_threshold=silence_peak_threshold,
     )
     if capture_backend == "swift_helper":
-        emit(f"capture backend: swift_helper (source={swift_source})")
-    watcher = EchoboxWatcher(recorder, on_meeting_end=on_meeting_end, logger=emit)
+        if requested_capture_backend == "screencapturekit":
+            emit("capture backend: screencapturekit (source=screencapturekit)")
+        else:
+            emit(f"capture backend: swift_helper (source={swift_source})")
+    watcher = EchoboxWatcher(
+        recorder,
+        on_meeting_end=on_meeting_end,
+        max_recording_seconds=max_recording_seconds,
+        silence_timeout_seconds=silence_timeout_seconds,
+        logger=emit,
+    )
 
     use_menubar = (
         EchoboxMenuBar is not None
@@ -481,6 +514,7 @@ def cmd_watch(ctx: AppContext, _args: argparse.Namespace) -> int:
             raw_retention_days=_int_cfg("cleanup.raw_track_retention_days", 7),
             mixed_retention_days=_int_cfg("cleanup.mixed_audio_retention_days", 0),
             sweep_interval_minutes=_int_cfg("cleanup.sweep_interval_minutes", 60),
+            output_device_name=output_device_name,
             enable_caption_panel=enable_captions,
         )
         try:
@@ -527,22 +561,13 @@ def cmd_reprocess(ctx: AppContext, args: argparse.Namespace) -> int:
         return 1
 
     base = transcript.stem
-    enrichment = ctx.enrichment_dir / f"{base}-enriched.md"
     print(f"Reprocessing: {base}", flush=True)
-    print("", flush=True)
-    print("[1/2] Enriching...", flush=True)
-    enrich_rc = cmd_enrich(ctx, argparse.Namespace(transcript=str(transcript), verbose=False))
-    if enrich_rc != 0:
-        return enrich_rc
-    print("[2/2] Publishing...", flush=True)
-    publish_rc = run_shell_script(ctx.repo_dir / "pipeline" / "publish.sh", str(enrichment))
-    if publish_rc != 0:
-        return publish_rc
-    print("")
-    print("Done.")
-    print(f"  Preview:  echobox preview {base}")
-    print("  Report:   echobox open")
-    return 0
+    # Delegate to the same orchestrator the watcher uses so the full
+    # [1/5]–[5/5] sequence runs (sync + notify included). The orchestrator
+    # is idempotent: if `<base>-enriched.md` and its sidecar already exist,
+    # step [1/5] reuses them and skips the LLM call. Set
+    # ECHOBOX_FORCE_ENRICH=true to force re-enrichment.
+    return run_shell_script(ctx.repo_dir / "pipeline" / "orchestrator.sh", base)
 
 
 def cmd_setup(ctx: AppContext, _args: argparse.Namespace) -> int:
