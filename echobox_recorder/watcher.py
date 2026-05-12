@@ -31,7 +31,10 @@ BROWSER_SCRIPTS = {
                     set end of urls to (URL of t as text)
                 end repeat
             end repeat
-            return urls as string
+            set AppleScript's text item delimiters to linefeed
+            set out to urls as string
+            set AppleScript's text item delimiters to ""
+            return out
         end tell
     ''',
     "Safari": '''
@@ -43,7 +46,10 @@ BROWSER_SCRIPTS = {
                     set end of urls to (URL of t as text)
                 end repeat
             end repeat
-            return urls as string
+            set AppleScript's text item delimiters to linefeed
+            set out to urls as string
+            set AppleScript's text item delimiters to ""
+            return out
         end tell
     ''',
     "Arc": '''
@@ -55,7 +61,10 @@ BROWSER_SCRIPTS = {
                     set end of urls to (URL of t as text)
                 end repeat
             end repeat
-            return urls as string
+            set AppleScript's text item delimiters to linefeed
+            set out to urls as string
+            set AppleScript's text item delimiters to ""
+            return out
         end tell
     ''',
     "Firefox": '''
@@ -67,7 +76,10 @@ BROWSER_SCRIPTS = {
                     set end of urls to (URL of t as text)
                 end repeat
             end repeat
-            return urls as string
+            set AppleScript's text item delimiters to linefeed
+            set out to urls as string
+            set AppleScript's text item delimiters to ""
+            return out
         end tell
     ''',
 }
