@@ -25,25 +25,49 @@ BROWSER_SCRIPTS = {
     "Google Chrome": '''
         tell application "Google Chrome"
             if (count of windows) is 0 then return ""
-            return URL of active tab of front window as text
+            set urls to {}
+            repeat with w in every window
+                repeat with t in every tab of w
+                    set end of urls to (URL of t as text)
+                end repeat
+            end repeat
+            return urls as string
         end tell
     ''',
     "Safari": '''
         tell application "Safari"
             if (count of windows) is 0 then return ""
-            return URL of current tab of front window as text
+            set urls to {}
+            repeat with w in every window
+                repeat with t in every tab of w
+                    set end of urls to (URL of t as text)
+                end repeat
+            end repeat
+            return urls as string
         end tell
     ''',
     "Arc": '''
         tell application "Arc"
             if (count of windows) is 0 then return ""
-            return URL of active tab of front window as text
+            set urls to {}
+            repeat with w in every window
+                repeat with t in every tab of w
+                    set end of urls to (URL of t as text)
+                end repeat
+            end repeat
+            return urls as string
         end tell
     ''',
     "Firefox": '''
         tell application "Firefox"
             if (count of windows) is 0 then return ""
-            return URL of active tab of front window as text
+            set urls to {}
+            repeat with w in every window
+                repeat with t in every tab of w
+                    set end of urls to (URL of t as text)
+                end repeat
+            end repeat
+            return urls as string
         end tell
     ''',
 }
